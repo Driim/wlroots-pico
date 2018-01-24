@@ -509,6 +509,9 @@ void view_initial_focus(struct roots_view *view) {
 void view_setup(struct roots_view *view) {
 	view_initial_focus(view);
 
+	/* phosh: Maximize everything by default */
+	view_maximize(view, true);
+
 	if (view->fullscreen_output == NULL && !view->maximized) {
 		view_center(view);
 	}
