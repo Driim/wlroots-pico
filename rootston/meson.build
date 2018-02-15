@@ -8,6 +8,7 @@ sources = [
 	'layer_shell.c',
 	'main.c',
 	'output.c',
+	'phosh.c',
 	'seat.c',
 	'wl_shell.c',
 	'xdg_shell_v6.c',

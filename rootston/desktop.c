@@ -871,11 +871,14 @@ struct roots_desktop *desktop_create(struct roots_server *server,
 
 	desktop->linux_dmabuf = wlr_linux_dmabuf_create(server->wl_display,
 		server->renderer);
+
+	desktop->phosh = phosh_create(desktop, server->wl_display);
+
 	return desktop;
 }
 
 void desktop_destroy(struct roots_desktop *desktop) {
-	// TODO
+	phosh_destroy(desktop->phosh);
 }
 
 struct roots_output *desktop_output_from_wlr_output(
