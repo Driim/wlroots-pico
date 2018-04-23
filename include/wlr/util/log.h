@@ -39,4 +39,7 @@ const char *wlr_strip_path(const char *filepath);
 #define wlr_log_errno(verb, fmt, ...) \
 	wlr_log(verb, fmt ": %s", ##__VA_ARGS__, strerror(errno))
 
+#define wlr_trace(fmt, ...) \
+        wlr_log(L_INFO, "%s: " fmt, __FUNCTION__, ##__VA_ARGS__)
+
 #endif

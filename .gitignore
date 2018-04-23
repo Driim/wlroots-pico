@@ -4,6 +4,7 @@
 bin/
 test/
 build/
+_build/
 wayland-*-protocol.*
 wlr-example.ini
 rootston.ini

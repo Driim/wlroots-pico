@@ -503,6 +503,9 @@ void view_initial_focus(struct roots_view *view) {
 void view_setup(struct roots_view *view) {
 	view_initial_focus(view);
 
+	/* phosh: Maximize everything by default */
+	view_maximize(view, true);
+
 	if (view->fullscreen_output == NULL && !view->maximized) {
 		view_center(view);
 	}
@@ -878,11 +881,14 @@ struct roots_desktop *desktop_create(struct roots_server *server,
 
 	desktop->linux_dmabuf = wlr_linux_dmabuf_create(server->wl_display,
 		server->renderer);
+
+	desktop->phosh = phosh_create(desktop, server->wl_display);
+
 	return desktop;
 }
 
 void desktop_destroy(struct roots_desktop *desktop) {
-	// TODO
+	phosh_destroy(desktop->phosh);
 }
 
 struct roots_output *desktop_output_from_wlr_output(

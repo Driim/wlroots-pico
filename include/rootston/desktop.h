@@ -25,6 +25,7 @@
 #include "rootston/config.h"
 #include "rootston/output.h"
 #include "rootston/view.h"
+#include "rootston/phosh.h"
 
 struct roots_desktop {
 	struct wl_list views; // roots_view::link
@@ -67,6 +68,7 @@ struct roots_desktop {
 	struct wl_listener xwayland_surface;
 	struct wl_listener xwayland_ready;
 #endif
+	struct phosh *phosh;
 };
 
 struct roots_server;

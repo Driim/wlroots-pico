@@ -36,6 +36,7 @@ protocols = [
 	'gamma-control.xml',
 	'gtk-primary-selection.xml',
 	'idle.xml',
+	'phosh-private.xml',
 	'screenshooter.xml',
 	'server-decoration.xml',
 	'wlr-layer-shell-unstable-v1.xml',
