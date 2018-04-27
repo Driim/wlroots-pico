@@ -44,22 +44,6 @@ static void phosh_rotate_display(struct wl_client *client,
   }
 
   wlr_output_set_transform(shell->panel->output, transform);
-
-  const struct wlr_box *output_box =
-	  wlr_output_layout_get_box(shell->desktop->layout,
-		  shell->panel->output);
-
-  /* Notify surfaces about their new size */
-  struct roots_view *view;
-  wl_list_for_each(view, &shell->desktop->views, link) {
-	  if (view->maximized == true) {
-		  view_move_resize(view,
-			  output_box->x,
-			  output_box->y,
-			  output_box->width,
-			  output_box->height);
-	  }
-  }
 }
 
 
