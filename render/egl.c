@@ -162,7 +162,7 @@ bool wlr_egl_init(struct wlr_egl *egl, EGLenum platform, void *remote_display,
 	wlr_log(L_INFO, "EGL vendor: %s", eglQueryString(egl->display, EGL_VENDOR));
 
 	if (!check_egl_ext(egl->exts_str, "EGL_KHR_image_base")) {
-		wlr_log(L_ERROR, "Required egl extensions not supported");
+		wlr_log(L_ERROR, "Required EGL_KHR_image_base extension not supported");
 		goto error;
 	}
 
@@ -225,9 +225,10 @@ bool wlr_egl_destroy_image(struct wlr_egl *egl, EGLImage image) {
 	if (!eglDestroyImageKHR) {
 		return false;
 	}
-
-	eglDestroyImageKHR(egl->display, image);
-	return true;
+	if (!image) {
+		return true;
+	}
+	return eglDestroyImageKHR(egl->display, image);
 }
 
 EGLSurface wlr_egl_create_surface(struct wlr_egl *egl, void *window) {
@@ -498,4 +499,11 @@ int wlr_egl_get_dmabuf_modifiers(struct wlr_egl *egl,
 		return -1;
 	}
 	return num;
+}
+
+bool wlr_egl_destroy_surface(struct wlr_egl *egl, EGLSurface surface) {
+	if (!surface) {
+		return true;
+	}
+	return eglDestroySurface(egl->display, surface);
 }

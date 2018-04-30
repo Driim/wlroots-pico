@@ -39,11 +39,11 @@ static int dispatch_events(int fd, uint32_t mask, void *data) {
  * compositor and creates surfaces for each output, then registers globals on
  * the specified display.
  */
-static bool wlr_wl_backend_start(struct wlr_backend *_backend) {
+static bool backend_start(struct wlr_backend *_backend) {
 	struct wlr_wl_backend *backend = (struct wlr_wl_backend *)_backend;
 	wlr_log(L_INFO, "Initializating wayland backend");
 
-	wlr_wl_registry_poll(backend);
+	poll_wl_registry(backend);
 	if (!backend->compositor || !backend->shell) {
 		wlr_log_errno(L_ERROR, "Could not obtain retrieve required globals");
 		return false;
@@ -65,7 +65,7 @@ static bool wlr_wl_backend_start(struct wlr_backend *_backend) {
 	return true;
 }
 
-static void wlr_wl_backend_destroy(struct wlr_backend *wlr_backend) {
+static void backend_destroy(struct wlr_backend *wlr_backend) {
 	struct wlr_wl_backend *backend = (struct wlr_wl_backend *)wlr_backend;
 	if (backend == NULL) {
 		return;
@@ -88,6 +88,7 @@ static void wlr_wl_backend_destroy(struct wlr_backend *wlr_backend) {
 	free(backend->seat_name);
 
 	wl_event_source_remove(backend->remote_display_src);
+	wlr_renderer_destroy(backend->renderer);
 	wlr_egl_finish(&backend->egl);
 	if (backend->seat) {
 		wl_seat_destroy(backend->seat);
@@ -110,23 +111,23 @@ static void wlr_wl_backend_destroy(struct wlr_backend *wlr_backend) {
 	free(backend);
 }
 
-static struct wlr_renderer *wlr_wl_backend_get_renderer(
+static struct wlr_renderer *backend_get_renderer(
 		struct wlr_backend *wlr_backend) {
 	struct wlr_wl_backend *backend = (struct wlr_wl_backend *)wlr_backend;
 	return backend->renderer;
 }
 
 static struct wlr_backend_impl backend_impl = {
-	.start = wlr_wl_backend_start,
-	.destroy = wlr_wl_backend_destroy,
-	.get_renderer = wlr_wl_backend_get_renderer,
+	.start = backend_start,
+	.destroy = backend_destroy,
+	.get_renderer = backend_get_renderer,
 };
 
 bool wlr_backend_is_wl(struct wlr_backend *b) {
 	return b->impl == &backend_impl;
 }
 
-struct wlr_wl_backend_output *wlr_wl_output_for_surface(
+struct wlr_wl_backend_output *get_wl_output_for_surface(
 		struct wlr_wl_backend *backend, struct wl_surface *surface) {
 	struct wlr_wl_backend_output *output;
 	wl_list_for_each(output, &backend->outputs, link) {
@@ -137,7 +138,7 @@ struct wlr_wl_backend_output *wlr_wl_output_for_surface(
 	return NULL;
 }
 
-void wlr_wl_output_layout_get_box(struct wlr_wl_backend *backend,
+void get_wl_output_layout_box(struct wlr_wl_backend *backend,
 		struct wlr_box *box) {
 	int min_x = INT_MAX, min_y = INT_MAX;
 	int max_x = INT_MIN, max_y = INT_MIN;
@@ -172,10 +173,11 @@ void wlr_wl_output_layout_get_box(struct wlr_wl_backend *backend,
 static void handle_display_destroy(struct wl_listener *listener, void *data) {
 	struct wlr_wl_backend *backend =
 		wl_container_of(listener, backend, local_display_destroy);
-	wlr_wl_backend_destroy(&backend->backend);
+	backend_destroy(&backend->backend);
 }
 
-struct wlr_backend *wlr_wl_backend_create(struct wl_display *display, const char *remote) {
+struct wlr_backend *wlr_wl_backend_create(struct wl_display *display,
+		const char *remote) {
 	wlr_log(L_INFO, "Creating wayland backend");
 
 	struct wlr_wl_backend *backend = calloc(1, sizeof(struct wlr_wl_backend));
@@ -193,26 +195,40 @@ struct wlr_backend *wlr_wl_backend_create(struct wl_display *display, const char
 	backend->remote_display = wl_display_connect(remote);
 	if (!backend->remote_display) {
 		wlr_log_errno(L_ERROR, "Could not connect to remote display");
-		return false;
+		goto error_connect;
 	}
 
 	backend->registry = wl_display_get_registry(backend->remote_display);
 	if (backend->registry == NULL) {
 		wlr_log_errno(L_ERROR, "Could not obtain reference to remote registry");
-		return false;
+		goto error_registry;
 	}
 
-	wlr_egl_init(&backend->egl, EGL_PLATFORM_WAYLAND_EXT,
-		backend->remote_display, NULL, WL_SHM_FORMAT_ARGB8888);
+	if (!wlr_egl_init(&backend->egl, EGL_PLATFORM_WAYLAND_EXT,
+			backend->remote_display, NULL, WL_SHM_FORMAT_ARGB8888)) {
+		wlr_log(L_ERROR, "Could not initialize EGL");
+		goto error_egl;
+	}
 	wlr_egl_bind_display(&backend->egl, backend->local_display);
 
 	backend->renderer = wlr_gles2_renderer_create(&backend->egl);
 	if (backend->renderer == NULL) {
-		wlr_log_errno(L_ERROR, "Could not create renderer");
+		wlr_log(L_ERROR, "Could not create renderer");
+		goto error_renderer;
 	}
 
 	backend->local_display_destroy.notify = handle_display_destroy;
 	wl_display_add_destroy_listener(display, &backend->local_display_destroy);
 
 	return &backend->backend;
+
+error_renderer:
+	wlr_egl_finish(&backend->egl);
+error_egl:
+	wl_registry_destroy(backend->registry);
+error_registry:
+	wl_display_disconnect(backend->remote_display);
+error_connect:
+	free(backend);
+	return NULL;
 }

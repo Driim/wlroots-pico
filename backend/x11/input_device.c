@@ -40,7 +40,7 @@ static void x11_handle_pointer_position(struct wlr_x11_output *output,
 	box.y /= wlr_output->scale;
 
 	struct wlr_box layout_box;
-	x11_output_layout_get_box(x11, &layout_box);
+	get_x11_output_layout_box(x11, &layout_box);
 
 	double ox = wlr_output->lx / (double)layout_box.width;
 	double oy = wlr_output->ly / (double)layout_box.height;
@@ -56,7 +56,7 @@ static void x11_handle_pointer_position(struct wlr_x11_output *output,
 	x11->time = time;
 }
 
-void x11_handle_input_event(struct wlr_x11_backend *x11,
+void handle_x11_input_event(struct wlr_x11_backend *x11,
 		xcb_generic_event_t *event) {
 	switch (event->response_type & XCB_EVENT_RESPONSE_TYPE_MASK) {
 	case XCB_KEY_PRESS:
@@ -116,7 +116,7 @@ void x11_handle_input_event(struct wlr_x11_backend *x11,
 		xcb_motion_notify_event_t *ev = (xcb_motion_notify_event_t *)event;
 
 		struct wlr_x11_output *output =
-			x11_output_from_window_id(x11, ev->event);
+			get_x11_output_from_window_id(x11, ev->event);
 		if (output != NULL) {
 			x11_handle_pointer_position(output, ev->event_x, ev->event_y, ev->time);
 		}
@@ -136,9 +136,31 @@ void x11_handle_input_event(struct wlr_x11_backend *x11,
 	}
 }
 
-const struct wlr_input_device_impl input_device_impl = { 0 };
+static void input_device_destroy(struct wlr_input_device *wlr_device) {
+	// Don't free the input device, it's on the stack
+}
 
-void x11_update_pointer_position(struct wlr_x11_output *output,
+const struct wlr_input_device_impl input_device_impl = {
+	.destroy = input_device_destroy,
+};
+
+static void keyboard_destroy(struct wlr_keyboard *wlr_keyboard) {
+	// Don't free the keyboard, it's on the stack
+}
+
+const struct wlr_keyboard_impl keyboard_impl = {
+	.destroy = keyboard_destroy,
+};
+
+static void pointer_destroy(struct wlr_pointer *wlr_pointer) {
+	// Don't free the pointer, it's on the stack
+}
+
+const struct wlr_pointer_impl pointer_impl = {
+	.destroy = pointer_destroy,
+};
+
+void update_x11_pointer_position(struct wlr_x11_output *output,
 		xcb_timestamp_t time) {
 	struct wlr_x11_backend *x11 = output->x11;
 

@@ -61,6 +61,8 @@ const char *atom_map[ATOM_LAST] = {
 	"_NET_WM_WINDOW_TYPE_POPUP_MENU",
 	"_NET_WM_WINDOW_TYPE_COMBO",
 	"_NET_WM_WINDOW_TYPE_MENU",
+	"_NET_WM_WINDOW_TYPE_NOTIFICATION",
+	"_NET_WM_WINDOW_TYPE_SPLASH",
 	"XdndSelection",
 	"XdndAware",
 	"XdndStatus",
@@ -278,7 +280,7 @@ static void xsurface_set_net_wm_state(struct wlr_xwayland_surface *xsurface) {
 
 static void xsurface_unmap(struct wlr_xwayland_surface *surface);
 
-static void wlr_xwayland_surface_destroy(
+static void xwayland_surface_destroy(
 		struct wlr_xwayland_surface *xsurface) {
 	xsurface_unmap(xsurface);
 
@@ -708,41 +710,29 @@ static void xwm_handle_destroy_notify(struct wlr_xwm *xwm,
 	if (xsurface == NULL) {
 		return;
 	}
-	wlr_xwayland_surface_destroy(xsurface);
+	xwayland_surface_destroy(xsurface);
 }
 
 static void xwm_handle_configure_request(struct wlr_xwm *xwm,
 		xcb_configure_request_event_t *ev) {
 	wlr_log(L_DEBUG, "XCB_CONFIGURE_REQUEST (%u) [%ux%u+%d,%d]", ev->window,
 		ev->width, ev->height, ev->x, ev->y);
-	struct wlr_xwayland_surface *xsurface = lookup_surface(xwm, ev->window);
-	if (xsurface == NULL) {
+	struct wlr_xwayland_surface *surface = lookup_surface(xwm, ev->window);
+	if (surface == NULL) {
 		return;
 	}
 
 	// TODO: handle ev->{parent,sibling}?
 
-	if (xsurface->surface == NULL) {
-		// Surface has not been mapped yet
-		wlr_xwayland_surface_configure(xsurface, ev->x, ev->y,
-			ev->width, ev->height);
-	} else {
-		struct wlr_xwayland_surface_configure_event *wlr_event =
-			calloc(1, sizeof(struct wlr_xwayland_surface_configure_event));
-		if (wlr_event == NULL) {
-			return;
-		}
+	struct wlr_xwayland_surface_configure_event wlr_event = {
+		.surface = surface,
+		.x = ev->x,
+		.y = ev->y,
+		.width = ev->width,
+		.height = ev->height,
+	};
 
-		wlr_event->surface = xsurface;
-		wlr_event->x = ev->x;
-		wlr_event->y = ev->y;
-		wlr_event->width = ev->width;
-		wlr_event->height = ev->height;
-
-		wlr_signal_emit_safe(&xsurface->events.request_configure, wlr_event);
-
-		free(wlr_event);
-	}
+	wlr_signal_emit_safe(&surface->events.request_configure, &wlr_event);
 }
 
 static void xwm_handle_configure_notify(struct wlr_xwm *xwm,
@@ -1304,10 +1294,10 @@ void xwm_destroy(struct wlr_xwm *xwm) {
 #endif
 	struct wlr_xwayland_surface *xsurface, *tmp;
 	wl_list_for_each_safe(xsurface, tmp, &xwm->surfaces, link) {
-		wlr_xwayland_surface_destroy(xsurface);
+		xwayland_surface_destroy(xsurface);
 	}
 	wl_list_for_each_safe(xsurface, tmp, &xwm->unpaired_surfaces, link) {
-		wlr_xwayland_surface_destroy(xsurface);
+		xwayland_surface_destroy(xsurface);
 	}
 	wl_list_remove(&xwm->compositor_new_surface.link);
 	wl_list_remove(&xwm->compositor_destroy.link);
@@ -1649,7 +1639,9 @@ bool wlr_xwayland_surface_is_unmanaged(
 		NET_WM_WINDOW_TYPE_DND,
 		NET_WM_WINDOW_TYPE_DROPDOWN_MENU,
 		NET_WM_WINDOW_TYPE_MENU,
+		NET_WM_WINDOW_TYPE_NOTIFICATION,
 		NET_WM_WINDOW_TYPE_POPUP_MENU,
+		NET_WM_WINDOW_TYPE_SPLASH,
 		NET_WM_WINDOW_TYPE_TOOLTIP,
 		NET_WM_WINDOW_TYPE_UTILITY,
 	};

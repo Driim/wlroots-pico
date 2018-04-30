@@ -31,7 +31,7 @@ static int xwm_data_source_write(int fd, uint32_t mask, void *data) {
 		return 1;
 	}
 
-	wlr_log(L_DEBUG, "wrote %ld (chunk size %ld) of %d bytes",
+	wlr_log(L_DEBUG, "wrote %zd (chunk size %zd) of %d bytes",
 		transfer->property_start + len,
 		len, xcb_get_property_value_length(transfer->property_reply));
 
@@ -182,14 +182,14 @@ struct x11_data_source {
 
 static const struct wlr_data_source_impl data_source_impl;
 
-bool wlr_data_source_is_xwayland_data_source(
+bool data_source_is_xwayland(
 		struct wlr_data_source *wlr_source) {
 	return wlr_source->impl == &data_source_impl;
 }
 
 static struct x11_data_source *data_source_from_wlr_data_source(
 		struct wlr_data_source *wlr_source) {
-	assert(wlr_data_source_is_xwayland_data_source(wlr_source));
+	assert(data_source_is_xwayland(wlr_source));
 	return (struct x11_data_source *)wlr_source;
 }
 
@@ -225,7 +225,7 @@ struct x11_primary_selection_source {
 static void primary_selection_source_cancel(
 	struct wlr_primary_selection_source *wlr_source);
 
-bool wlr_primary_selection_source_is_xwayland_primary_selection_source(
+bool primary_selection_source_is_xwayland(
 		struct wlr_primary_selection_source *wlr_source) {
 	return wlr_source->cancel == primary_selection_source_cancel;
 }
@@ -309,6 +309,7 @@ static bool source_get_targets(struct wlr_xwm_selection *selection,
 			char **mime_type_ptr =
 				wl_array_add(mime_types, sizeof(*mime_type_ptr));
 			if (mime_type_ptr == NULL) {
+				free(mime_type);
 				break;
 			}
 			*mime_type_ptr = mime_type;

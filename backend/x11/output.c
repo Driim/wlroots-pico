@@ -61,7 +61,7 @@ static void output_destroy(struct wlr_output *wlr_output) {
 
 	wl_list_remove(&output->link);
 	wl_event_source_remove(output->frame_timer);
-	eglDestroySurface(x11->egl.display, output->surf);
+	wlr_egl_destroy_surface(&x11->egl, output->surf);
 	xcb_destroy_window(x11->xcb_conn, output->win);
 	xcb_flush(x11->xcb_conn);
 	free(output);
@@ -164,13 +164,13 @@ struct wlr_output *wlr_x11_output_create(struct wlr_backend *backend) {
 	return wlr_output;
 }
 
-void x11_output_handle_configure_notify(struct wlr_x11_output *output,
+void handle_x11_configure_notify(struct wlr_x11_output *output,
 		xcb_configure_notify_event_t *ev) {
 	wlr_output_update_custom_mode(&output->wlr_output, ev->width,
 		ev->height, output->wlr_output.refresh);
 
 	// Move the pointer to its new location
-	x11_update_pointer_position(output, output->x11->time);
+	update_x11_pointer_position(output, output->x11->time);
 }
 
 bool wlr_output_is_x11(struct wlr_output *wlr_output) {
