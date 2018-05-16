@@ -66,7 +66,6 @@ struct roots_desktop {
 #ifdef WLR_HAS_XWAYLAND
 	struct wlr_xwayland *xwayland;
 	struct wl_listener xwayland_surface;
-	struct wl_listener xwayland_ready;
 #endif
 	struct phosh *phosh;
 };

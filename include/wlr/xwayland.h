@@ -13,20 +13,26 @@ struct wlr_xwayland_cursor;
 
 struct wlr_xwayland {
 	pid_t pid;
-	int display;
-	int x_fd[2], wl_fd[2], wm_fd[2];
 	struct wl_client *client;
-	struct wl_display *wl_display;
-	struct wlr_compositor *compositor;
-	time_t server_start;
-
 	struct wl_event_source *sigusr1_source;
 	struct wl_listener client_destroy;
-	struct wl_listener display_destroy;
 	struct wlr_xwm *xwm;
 	struct wlr_xwayland_cursor *cursor;
+	int wm_fd[2], wl_fd[2];
 
-	/* Anything above seat is reset on Xwayland restart, rest is conserved */
+	time_t server_start;
+
+	/* Anything above display is reset on Xwayland restart, rest is conserved */
+
+	int display;
+	int x_fd[2];
+	struct wl_event_source *x_fd_read_event[2];
+	struct wl_listener display_destroy;
+
+	bool lazy;
+
+	struct wl_display *wl_display;
+	struct wlr_compositor *compositor;
 	struct wlr_seat *seat;
 	struct wl_listener seat_destroy;
 
@@ -81,7 +87,7 @@ struct wlr_xwayland_surface_size_hints {
  *
  * When a surface is ready to be displayed, the `map` event is emitted. When a
  * surface should no longer be displayed, the `unmap` event is emitted. The
- * `unmap` event is guaranted to be emitted before the `destroy` event if the
+ * `unmap` event is guaranteed to be emitted before the `destroy` event if the
  * view is destroyed when mapped.
  */
 struct wlr_xwayland_surface {
@@ -103,6 +109,7 @@ struct wlr_xwayland_surface {
 	char *class;
 	char *instance;
 	pid_t pid;
+	bool has_utf8_title;
 
 	struct wl_list children; // wlr_xwayland_surface::parent_link
 	struct wlr_xwayland_surface *parent;
@@ -168,7 +175,7 @@ struct wlr_xwayland_resize_event {
 };
 
 struct wlr_xwayland *wlr_xwayland_create(struct wl_display *wl_display,
-	struct wlr_compositor *compositor);
+	struct wlr_compositor *compositor, bool lazy);
 
 void wlr_xwayland_destroy(struct wlr_xwayland *wlr_xwayland);
 

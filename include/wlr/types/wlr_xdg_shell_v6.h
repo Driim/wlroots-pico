@@ -97,7 +97,7 @@ struct wlr_xdg_toplevel_v6_state {
  *
  * When a surface has a role and is ready to be displayed, the `map` event is
  * emitted. When a surface should no longer be displayed, the `unmap` event is
- * emitted. The `unmap` event is guaranted to be emitted before the `destroy`
+ * emitted. The `unmap` event is guaranteed to be emitted before the `destroy`
  * event if the view is destroyed when mapped.
  */
 struct wlr_xdg_toplevel_v6 {
@@ -243,12 +243,6 @@ uint32_t wlr_xdg_toplevel_v6_set_resizing(struct wlr_xdg_surface_v6 *surface,
 void wlr_xdg_surface_v6_send_close(struct wlr_xdg_surface_v6 *surface);
 
 /**
- * Compute the popup position in its parent's surface-local coordinate system.
- */
-void wlr_xdg_surface_v6_popup_get_position(struct wlr_xdg_surface_v6 *surface,
-		double *popup_sx, double *popup_sy);
-
-/**
  * Find a surface within this xdg-surface tree at the given surface-local
  * coordinates. Returns the surface and coordinates in the leaf surface
  * coordinate system or NULL if no surface is found at that location.
@@ -306,7 +300,7 @@ struct wlr_xdg_surface_v6 *wlr_xdg_surface_v6_from_wlr_surface(
 
 /**
  * Call `iterator` on each surface in the xdg-surface tree, with the surface's
- * positon relative to the root xdg-surface. The function is called from root to
+ * position relative to the root xdg-surface. The function is called from root to
  * leaves (in rendering order).
  */
 void wlr_xdg_surface_v6_for_each_surface(struct wlr_xdg_surface_v6 *surface,
