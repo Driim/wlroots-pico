@@ -612,6 +612,7 @@ static bool drm_connector_set_cursor(struct wlr_output *output,
 	}
 
 	plane->cursor_enabled = false;
+	return false;
 	if (texture != NULL) {
 		int width, height;
 		wlr_texture_get_size(texture, &width, &height);
