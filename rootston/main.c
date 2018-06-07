@@ -21,7 +21,7 @@ int main(int argc, char **argv) {
 	server.wl_event_loop = wl_display_get_event_loop(server.wl_display);
 	assert(server.config && server.wl_display && server.wl_event_loop);
 
-	server.backend = wlr_backend_autocreate(server.wl_display);
+	server.backend = wlr_backend_autocreate(server.wl_display, NULL);
 	if (server.backend == NULL) {
 		wlr_log(L_ERROR, "could not start backend");
 		return 1;
@@ -31,7 +31,7 @@ int main(int argc, char **argv) {
 	assert(server.renderer);
 	server.data_device_manager =
 		wlr_data_device_manager_create(server.wl_display);
-	wlr_renderer_init_wl_shm(server.renderer, server.wl_display);
+	wlr_renderer_init_wl_display(server.renderer, server.wl_display);
 	server.desktop = desktop_create(&server, server.config);
 	server.input = input_create(&server, server.config);
 
@@ -72,6 +72,7 @@ int main(int argc, char **argv) {
 	}
 
 	wl_display_run(server.wl_display);
+	wl_display_destroy_clients(server.wl_display);
 	wl_display_destroy(server.wl_display);
 	return 0;
 }

@@ -19,29 +19,28 @@
 #endif
 
 bool init_drm_renderer(struct wlr_drm_backend *drm,
-		struct wlr_drm_renderer *renderer) {
+		struct wlr_drm_renderer *renderer, wlr_renderer_create_func_t create_renderer_func) {
 	renderer->gbm = gbm_create_device(drm->fd);
 	if (!renderer->gbm) {
 		wlr_log(L_ERROR, "Failed to create GBM device");
 		return false;
 	}
 
-	if (!wlr_egl_init(&renderer->egl, EGL_PLATFORM_GBM_MESA, renderer->gbm,
-			NULL, GBM_FORMAT_ARGB8888)) {
-		goto error_gbm;
+	if (!create_renderer_func) {
+		create_renderer_func = wlr_renderer_autocreate;
 	}
 
-	renderer->wlr_rend = wlr_gles2_renderer_create(&renderer->egl);
+	renderer->wlr_rend = create_renderer_func(&renderer->egl,
+		EGL_PLATFORM_GBM_MESA, renderer->gbm, NULL, GBM_FORMAT_ARGB8888);
+
 	if (!renderer->wlr_rend) {
-		wlr_log(L_ERROR, "Failed to create WLR renderer");
-		goto error_egl;
+		wlr_log(L_ERROR, "Failed to create EGL/WLR renderer");
+		goto error_gbm;
 	}
 
 	renderer->fd = drm->fd;
 	return true;
 
-error_egl:
-	wlr_egl_finish(&renderer->egl);
 error_gbm:
 	gbm_device_destroy(renderer->gbm);
 	return false;
@@ -187,15 +186,15 @@ static struct wlr_texture *get_tex_for_bo(struct wlr_drm_renderer *renderer,
 		return NULL;
 	}
 
-	struct wlr_dmabuf_buffer_attribs attribs = {
+	struct wlr_dmabuf_attributes attribs = {
 		.n_planes = 1,
 		.width = gbm_bo_get_width(bo),
 		.height = gbm_bo_get_height(bo),
 		.format = gbm_bo_get_format(bo),
+		.modifier = DRM_FORMAT_MOD_LINEAR,
 	};
 	attribs.offset[0] = 0;
 	attribs.stride[0] = gbm_bo_get_stride_for_plane(bo, 0);
-	attribs.modifier[0] = DRM_FORMAT_MOD_LINEAR;
 	attribs.fd[0] = gbm_bo_get_fd(bo);
 
 	tex->tex = wlr_texture_from_dmabuf(renderer->wlr_rend, &attribs);

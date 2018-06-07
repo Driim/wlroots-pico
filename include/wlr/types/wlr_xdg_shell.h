@@ -14,6 +14,12 @@ struct wlr_xdg_shell {
 	struct wl_listener display_destroy;
 
 	struct {
+		/**
+		 * The `new_surface` event signals that a client has requested to
+		 * create a new shell surface. At this point, the surface is ready to
+		 * be configured but is not mapped or ready receive input events. The
+		 * surface will be ready to be managed on the `map` event.
+		 */
 		struct wl_signal new_surface;
 	} events;
 
@@ -86,6 +92,7 @@ enum wlr_xdg_surface_role {
 
 struct wlr_xdg_toplevel_state {
 	bool maximized, fullscreen, resizing, activated;
+	uint32_t tiled; // enum wlr_edges
 	uint32_t width, height;
 	uint32_t max_width, max_height;
 	uint32_t min_width, min_height;
@@ -111,6 +118,7 @@ struct wlr_xdg_toplevel {
 		struct wl_signal request_move;
 		struct wl_signal request_resize;
 		struct wl_signal request_show_window_menu;
+		struct wl_signal set_parent;
 	} events;
 };
 
@@ -161,7 +169,21 @@ struct wlr_xdg_surface {
 		struct wl_signal destroy;
 		struct wl_signal ping_timeout;
 		struct wl_signal new_popup;
+		/**
+		 * The `map` event signals that the shell surface is ready to be
+		 * managed by the compositor and rendered on the screen. At this point,
+		 * the surface has configured its properties, has had the opportunity
+		 * to bind to the seat to receive input events, and has a buffer that
+		 * is ready to be rendered. You can now safely add this surface to a
+		 * list of views.
+		 */
 		struct wl_signal map;
+		/**
+		 * The `unmap` event signals that the surface is no longer in a state
+		 * where it should be shown on the screen. This might happen if the
+		 * surface no longer has a displayable buffer because either the
+		 * surface has been hidden or is about to be destroyed.
+		 */
 		struct wl_signal unmap;
 	} events;
 
@@ -247,6 +269,14 @@ uint32_t wlr_xdg_toplevel_set_resizing(struct wlr_xdg_surface *surface,
 		bool resizing);
 
 /**
+ * Request that this toplevel surface consider itself in a tiled layout and some
+ * edges are adjacent to another part of the tiling grid. `tiled_edges` is a
+ * bitfield of `enum wlr_edges`. Returns the associated configure serial.
+ */
+uint32_t wlr_xdg_toplevel_set_tiled(struct wlr_xdg_surface *surface,
+		uint32_t tiled_edges);
+
+/**
  * Request that this xdg surface closes.
  */
 void wlr_xdg_surface_send_close(struct wlr_xdg_surface *surface);
@@ -311,6 +341,15 @@ bool wlr_surface_is_xdg_surface(struct wlr_surface *surface);
 
 struct wlr_xdg_surface *wlr_xdg_surface_from_wlr_surface(
 		struct wlr_surface *surface);
+
+/**
+ * Get the surface geometry.
+ * This is either the geometry as set by the client, or defaulted to the bounds
+ * of the surface + the subsurfaces (as specified by the protocol).
+ *
+ * The x and y value can be <0
+ */
+void wlr_xdg_surface_get_geometry(struct wlr_xdg_surface *surface, struct wlr_box *box);
 
 /**
  * Call `iterator` on each surface in the xdg-surface tree, with the surface's

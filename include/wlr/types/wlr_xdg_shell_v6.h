@@ -15,6 +15,12 @@ struct wlr_xdg_shell_v6 {
 	struct wl_listener display_destroy;
 
 	struct {
+		/**
+		 * The `new_surface` event signals that a client has requested to
+		 * create a new shell surface. At this point, the surface is ready to
+		 * be configured but is not mapped or ready receive input events. The
+		 * surface will be ready to be managed on the `map` event.
+		 */
 		struct wl_signal new_surface;
 	} events;
 
@@ -120,6 +126,7 @@ struct wlr_xdg_toplevel_v6 {
 		struct wl_signal request_move;
 		struct wl_signal request_resize;
 		struct wl_signal request_show_window_menu;
+		struct wl_signal set_parent;
 	} events;
 };
 
@@ -160,7 +167,21 @@ struct wlr_xdg_surface_v6 {
 		struct wl_signal destroy;
 		struct wl_signal ping_timeout;
 		struct wl_signal new_popup;
+		/**
+		 * The `map` event signals that the shell surface is ready to be
+		 * managed by the compositor and rendered on the screen. At this point,
+		 * the surface has configured its properties, has had the opportunity
+		 * to bind to the seat to receive input events, and has a buffer that
+		 * is ready to be rendered. You can now safely add this surface to a
+		 * list of views.
+		 */
 		struct wl_signal map;
+		/**
+		 * The `unmap` event signals that the surface is no longer in a state
+		 * where it should be shown on the screen. This might happen if the
+		 * surface no longer has a displayable buffer because either the
+		 * surface has been hidden or is about to be destroyed.
+		 */
 		struct wl_signal unmap;
 	} events;
 
@@ -297,6 +318,15 @@ bool wlr_surface_is_xdg_surface_v6(struct wlr_surface *surface);
 
 struct wlr_xdg_surface_v6 *wlr_xdg_surface_v6_from_wlr_surface(
 		struct wlr_surface *surface);
+
+/**
+ * Get the surface geometry.
+ * This is either the geometry as set by the client, or defaulted to the bounds
+ * of the surface + the subsurfaces (as specified by the protocol).
+ *
+ * The x and y value can be <0
+ */
+void wlr_xdg_surface_v6_get_geometry(struct wlr_xdg_surface_v6 *surface, struct wlr_box *box);
 
 /**
  * Call `iterator` on each surface in the xdg-surface tree, with the surface's

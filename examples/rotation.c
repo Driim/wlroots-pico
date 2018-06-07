@@ -235,7 +235,7 @@ int main(int argc, char *argv[]) {
 	};
 	wl_list_init(&state.outputs);
 
-	struct wlr_backend *wlr = wlr_backend_autocreate(display);
+	struct wlr_backend *wlr = wlr_backend_autocreate(display, NULL);
 	if (!wlr) {
 		exit(1);
 	}
@@ -268,6 +268,5 @@ int main(int argc, char *argv[]) {
 	wl_display_run(display);
 
 	wlr_texture_destroy(state.cat_texture);
-	wlr_renderer_destroy(state.renderer);
 	wl_display_destroy(display);
 }

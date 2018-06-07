@@ -4,6 +4,7 @@
 #include <wlr/render/egl.h>
 #include <wlr/render/interface.h>
 #include <wlr/types/wlr_compositor.h>
+#include <wlr/types/wlr_linux_dmabuf.h>
 #include <wlr/types/wlr_matrix.h>
 #include <wlr/types/wlr_region.h>
 #include <wlr/types/wlr_surface.h>
@@ -14,6 +15,22 @@
 #define CALLBACK_VERSION 1
 #define SURFACE_VERSION 4
 #define SUBSURFACE_VERSION 1
+
+static int min(int fst, int snd) {
+	if (fst < snd) {
+		return fst;
+	} else {
+		return snd;
+	}
+}
+
+static int max(int fst, int snd) {
+	if (fst > snd) {
+		return fst;
+	} else {
+		return snd;
+	}
+}
 
 static void surface_state_reset_buffer(struct wlr_surface_state *state) {
 	if (state->buffer) {
@@ -31,7 +48,7 @@ static void surface_handle_buffer_destroy(struct wl_listener *listener,
 
 static void surface_state_release_buffer(struct wlr_surface_state *state) {
 	if (state->buffer) {
-		wl_resource_post_event(state->buffer, WL_BUFFER_RELEASE);
+		wl_buffer_send_release(state->buffer);
 		surface_state_reset_buffer(state);
 	}
 }
@@ -569,7 +586,7 @@ struct wlr_surface *wlr_surface_from_resource(struct wl_resource *resource) {
 	return wl_resource_get_user_data(resource);
 }
 
-static struct wlr_surface_state *surface_state_create() {
+static struct wlr_surface_state *surface_state_create(void) {
 	struct wlr_surface_state *state =
 		calloc(1, sizeof(struct wlr_surface_state));
 	if (state == NULL) {
@@ -788,7 +805,7 @@ static void subsurface_handle_place_above(struct wl_client *client,
 	}
 
 	wl_list_remove(&subsurface->parent_pending_link);
-	wl_list_insert(sibling->parent_pending_link.prev,
+	wl_list_insert(&sibling->parent_pending_link,
 		&subsurface->parent_pending_link);
 
 	subsurface->reordered = true;
@@ -815,7 +832,7 @@ static void subsurface_handle_place_below(struct wl_client *client,
 	}
 
 	wl_list_remove(&subsurface->parent_pending_link);
-	wl_list_insert(&sibling->parent_pending_link,
+	wl_list_insert(sibling->parent_pending_link.prev,
 		&subsurface->parent_pending_link);
 
 	subsurface->reordered = true;
@@ -916,8 +933,8 @@ struct wlr_subsurface *wlr_subsurface_create(struct wlr_surface *surface,
 	subsurface->parent = parent;
 	wl_signal_add(&parent->events.destroy, &subsurface->parent_destroy);
 	subsurface->parent_destroy.notify = subsurface_handle_parent_destroy;
-	wl_list_insert(&parent->subsurfaces, &subsurface->parent_link);
-	wl_list_insert(&parent->subsurface_pending_list,
+	wl_list_insert(parent->subsurfaces.prev, &subsurface->parent_link);
+	wl_list_insert(parent->subsurface_pending_list.prev,
 		&subsurface->parent_pending_link);
 
 	surface->role_data = subsurface;
@@ -939,7 +956,7 @@ struct wlr_surface *wlr_surface_get_root_surface(struct wlr_surface *surface) {
 	while (wlr_surface_is_subsurface(surface)) {
 		struct wlr_subsurface *subsurface =
 			wlr_subsurface_from_surface(surface);
-		surface = subsurface->surface;
+		surface = subsurface->parent;
 	}
 	return surface;
 }
@@ -954,7 +971,7 @@ bool wlr_surface_point_accepts_input(struct wlr_surface *surface,
 struct wlr_surface *wlr_surface_surface_at(struct wlr_surface *surface,
 		double sx, double sy, double *sub_x, double *sub_y) {
 	struct wlr_subsurface *subsurface;
-	wl_list_for_each(subsurface, &surface->subsurfaces, parent_link) {
+	wl_list_for_each_reverse(subsurface, &surface->subsurfaces, parent_link) {
 		double _sub_x = subsurface->surface->current->subsurface_position.x;
 		double _sub_y = subsurface->surface->current->subsurface_position.y;
 		struct wlr_surface *sub = wlr_surface_surface_at(subsurface->surface,
@@ -1034,4 +1051,36 @@ static void surface_for_each_surface(struct wlr_surface *surface, int x, int y,
 void wlr_surface_for_each_surface(struct wlr_surface *surface,
 		wlr_surface_iterator_func_t iterator, void *user_data) {
 	surface_for_each_surface(surface, 0, 0, iterator, user_data);
+}
+
+struct bound_acc {
+	int32_t min_x, min_y;
+	int32_t max_x, max_y;
+};
+
+static void handle_bounding_box_surface(struct wlr_surface *surface,
+		int x, int y, void *data) {
+	struct bound_acc *acc = data;
+
+	acc->min_x = min(x, acc->min_x);
+	acc->min_y = min(y, acc->min_y);
+
+	acc->max_x = max(x + surface->current->width, acc->max_x);
+	acc->max_y = max(y + surface->current->height, acc->max_y);
+}
+
+void wlr_surface_get_extends(struct wlr_surface *surface, struct wlr_box *box) {
+	struct bound_acc acc = {
+		.min_x = 0,
+		.min_y = 0,
+		.max_x = surface->current->width,
+		.max_y = surface->current->height,
+	};
+
+	wlr_surface_for_each_surface(surface, handle_bounding_box_surface, &acc);
+
+	box->x = acc.min_x;
+	box->y = acc.min_y;
+	box->width = acc.max_x - acc.min_x;
+	box->height = acc.max_y - acc.min_y;
 }

@@ -198,8 +198,8 @@ void wlr_egl_finish(struct wlr_egl *egl) {
 		return;
 	}
 
-	eglMakeCurrent(EGL_NO_DISPLAY, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
-	if (egl->wl_display && eglUnbindWaylandDisplayWL) {
+	eglMakeCurrent(egl->display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+	if (egl->wl_display && egl->egl_exts.bind_wayland_display) {
 		eglUnbindWaylandDisplayWL(egl->display, egl->wl_display);
 	}
 
@@ -340,9 +340,9 @@ EGLImageKHR wlr_egl_create_image_from_wl_drm(struct wlr_egl *egl,
 }
 
 EGLImageKHR wlr_egl_create_image_from_dmabuf(struct wlr_egl *egl,
-		struct wlr_dmabuf_buffer_attribs *attributes) {
+		struct wlr_dmabuf_attributes *attributes) {
 	bool has_modifier = false;
-	if (attributes->modifier[0] != DRM_FORMAT_MOD_INVALID) {
+	if (attributes->modifier != DRM_FORMAT_MOD_INVALID) {
 		if (!egl->egl_exts.dmabuf_import_modifiers) {
 			return NULL;
 		}
@@ -364,7 +364,7 @@ EGLImageKHR wlr_egl_create_image_from_dmabuf(struct wlr_egl *egl,
 		EGLint pitch;
 		EGLint mod_lo;
 		EGLint mod_hi;
-	} attr_names[WLR_LINUX_DMABUF_MAX_PLANES] = {
+	} attr_names[WLR_DMABUF_MAX_PLANES] = {
 		{
 			EGL_DMA_BUF_PLANE0_FD_EXT,
 			EGL_DMA_BUF_PLANE0_OFFSET_EXT,
@@ -401,9 +401,9 @@ EGLImageKHR wlr_egl_create_image_from_dmabuf(struct wlr_egl *egl,
 		attribs[atti++] = attributes->stride[i];
 		if (has_modifier) {
 			attribs[atti++] = attr_names[i].mod_lo;
-			attribs[atti++] = attributes->modifier[i] & 0xFFFFFFFF;
+			attribs[atti++] = attributes->modifier & 0xFFFFFFFF;
 			attribs[atti++] = attr_names[i].mod_hi;
-			attribs[atti++] = attributes->modifier[i] >> 32;
+			attribs[atti++] = attributes->modifier >> 32;
 		}
 	}
 	attribs[atti++] = EGL_NONE;
@@ -411,36 +411,6 @@ EGLImageKHR wlr_egl_create_image_from_dmabuf(struct wlr_egl *egl,
 
 	return eglCreateImageKHR(egl->display, EGL_NO_CONTEXT,
 		EGL_LINUX_DMA_BUF_EXT, NULL, attribs);
-}
-
-#ifndef DRM_FORMAT_BIG_ENDIAN
-# define DRM_FORMAT_BIG_ENDIAN 0x80000000
-#endif
-bool wlr_egl_check_import_dmabuf(struct wlr_egl *egl,
-		struct wlr_dmabuf_buffer *dmabuf) {
-	switch (dmabuf->attributes.format & ~DRM_FORMAT_BIG_ENDIAN) {
-		/* TODO: YUV based formats not yet supported, require multiple
-		 * wlr_create_image_from_dmabuf */
-	case WL_SHM_FORMAT_YUYV:
-	case WL_SHM_FORMAT_YVYU:
-	case WL_SHM_FORMAT_UYVY:
-	case WL_SHM_FORMAT_VYUY:
-	case WL_SHM_FORMAT_AYUV:
-		return false;
-	default:
-		break;
-	}
-
-	EGLImage egl_image = wlr_egl_create_image_from_dmabuf(egl,
-		&dmabuf->attributes);
-	if (egl_image) {
-		/* We can import the image, good. No need to keep it
-		   since wlr_texture_upload_dmabuf will import it again */
-		wlr_egl_destroy_image(egl, egl_image);
-		return true;
-	}
-	/* TODO: import yuv dmabufs */
-	return false;
 }
 
 int wlr_egl_get_dmabuf_formats(struct wlr_egl *egl,

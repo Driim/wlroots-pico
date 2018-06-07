@@ -26,6 +26,7 @@
 #include "rootston/seat.h"
 #include "rootston/server.h"
 #include "rootston/view.h"
+#include "rootston/virtual_keyboard.h"
 #include "rootston/xcursor.h"
 #include "wlr-layer-shell-unstable-v1-protocol.h"
 
@@ -870,7 +871,11 @@ struct roots_desktop *desktop_create(struct roots_server *server,
 		server->renderer);
 
 	desktop->phosh = phosh_create(desktop, server->wl_display);
-
+	desktop->virtual_keyboard = wlr_virtual_keyboard_manager_v1_create(
+		server->wl_display);
+	wl_signal_add(&desktop->virtual_keyboard->events.new_virtual_keyboard,
+		&desktop->virtual_keyboard_new);
+	desktop->virtual_keyboard_new.notify = handle_virtual_keyboard;
 	return desktop;
 }
 

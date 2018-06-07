@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <wayland-server-protocol.h>
+#include <wlr/render/egl.h>
 #include <wlr/render/wlr_texture.h>
 #include <wlr/types/wlr_box.h>
 
@@ -15,6 +16,9 @@ struct wlr_renderer {
 		struct wl_signal destroy;
 	} events;
 };
+
+struct wlr_renderer *wlr_renderer_autocreate(struct wlr_egl *egl, EGLenum platform,
+	void *remote_display, EGLint *config_attribs, EGLint visual_id);
 
 void wlr_renderer_begin(struct wlr_renderer *r, int width, int height);
 void wlr_renderer_end(struct wlr_renderer *r);
@@ -81,12 +85,6 @@ int wlr_renderer_get_dmabuf_formats(struct wlr_renderer *renderer,
 int wlr_renderer_get_dmabuf_modifiers(struct wlr_renderer *renderer, int format,
 	uint64_t **modifiers);
 /**
- * Try to import the given dmabuf. On success return true false otherwise.
- * If this succeeds the dmabuf can be used for rendering on a texture
- */
-bool wlr_renderer_check_import_dmabuf(struct wlr_renderer *renderer,
-	struct wlr_dmabuf_buffer *dmabuf);
-/**
  * Reads out of pixels of the currently bound surface into data. `stride` is in
  * bytes.
  */
@@ -98,8 +96,8 @@ bool wlr_renderer_read_pixels(struct wlr_renderer *r, enum wl_shm_format fmt,
  */
 bool wlr_renderer_format_supported(struct wlr_renderer *r,
 	enum wl_shm_format fmt);
-void wlr_renderer_init_wl_shm(struct wlr_renderer *r,
-	struct wl_display *display);
+void wlr_renderer_init_wl_display(struct wlr_renderer *r,
+	struct wl_display *wl_display);
 /**
  * Destroys this wlr_renderer. Textures must be destroyed separately.
  */

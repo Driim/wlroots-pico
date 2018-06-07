@@ -42,7 +42,7 @@ static void gles2_begin(struct wlr_renderer *wlr_renderer, uint32_t width,
 
 	// enable transparency
 	glEnable(GL_BLEND);
-	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
 
 	// XXX: maybe we should save output projection and remove some of the need
 	// for users to sling matricies themselves
@@ -84,7 +84,7 @@ static void gles2_scissor(struct wlr_renderer *wlr_renderer,
 	POP_GLES2_DEBUG;
 }
 
-static void draw_quad() {
+static void draw_quad(void) {
 	GLfloat verts[] = {
 		1, 0, // top right
 		0, 0, // top left
@@ -242,12 +242,6 @@ static int gles2_get_dmabuf_modifiers(struct wlr_renderer *wlr_renderer,
 	return wlr_egl_get_dmabuf_modifiers(renderer->egl, format, modifiers);
 }
 
-static bool gles2_check_import_dmabuf(struct wlr_renderer *wlr_renderer,
-		struct wlr_dmabuf_buffer *dmabuf) {
-	struct wlr_gles2_renderer *renderer = gles2_get_renderer(wlr_renderer);
-	return wlr_egl_check_import_dmabuf(renderer->egl, dmabuf);
-}
-
 static bool gles2_read_pixels(struct wlr_renderer *wlr_renderer,
 		enum wl_shm_format wl_fmt, uint32_t stride, uint32_t width,
 		uint32_t height, uint32_t src_x, uint32_t src_y, uint32_t dst_x,
@@ -299,9 +293,18 @@ static struct wlr_texture *gles2_texture_from_wl_drm(
 
 static struct wlr_texture *gles2_texture_from_dmabuf(
 		struct wlr_renderer *wlr_renderer,
-		struct wlr_dmabuf_buffer_attribs *attribs) {
+		struct wlr_dmabuf_attributes *attribs) {
 	struct wlr_gles2_renderer *renderer = gles2_get_renderer(wlr_renderer);
 	return wlr_gles2_texture_from_dmabuf(renderer->egl, attribs);
+}
+
+static void gles2_init_wl_display(struct wlr_renderer *wlr_renderer,
+		struct wl_display *wl_display) {
+	struct wlr_gles2_renderer *renderer =
+		gles2_get_renderer_in_context(wlr_renderer);
+	if (!wlr_egl_bind_display(renderer->egl, wl_display)) {
+		wlr_log(L_INFO, "failed to bind wl_display to EGL");
+	}
 }
 
 static void gles2_destroy(struct wlr_renderer *wlr_renderer) {
@@ -339,12 +342,12 @@ static const struct wlr_renderer_impl renderer_impl = {
 	.wl_drm_buffer_get_size = gles2_wl_drm_buffer_get_size,
 	.get_dmabuf_formats = gles2_get_dmabuf_formats,
 	.get_dmabuf_modifiers = gles2_get_dmabuf_modifiers,
-	.check_import_dmabuf = gles2_check_import_dmabuf,
 	.read_pixels = gles2_read_pixels,
 	.format_supported = gles2_format_supported,
 	.texture_from_pixels = gles2_texture_from_pixels,
 	.texture_from_wl_drm = gles2_texture_from_wl_drm,
 	.texture_from_dmabuf = gles2_texture_from_dmabuf,
+	.init_wl_display = gles2_init_wl_display,
 };
 
 void push_gles2_marker(const char *file, const char *func) {
