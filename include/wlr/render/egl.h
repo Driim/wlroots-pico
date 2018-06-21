@@ -16,12 +16,14 @@ struct wlr_egl {
 	const char *exts_str;
 
 	struct {
-		bool buffer_age;
-		bool swap_buffers_with_damage;
-		bool dmabuf_import;
-		bool dmabuf_import_modifiers;
-		bool bind_wayland_display;
-	} egl_exts;
+		bool bind_wayland_display_wl;
+		bool buffer_age_ext;
+		bool image_dmabuf_import_modifiers_ext;
+		bool image_dmabuf_import_ext;
+		bool image_base_khr;
+		bool swap_buffers_with_damage_ext;
+		bool swap_buffers_with_damage_khr;
+	} exts;
 
 	struct wl_display *wl_display;
 };
