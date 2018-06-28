@@ -841,6 +841,9 @@ void handle_new_output(struct wl_listener *listener, void *data) {
 		roots_config_get_output(config, wlr_output);
 	if (output_config) {
 		if (output_config->enable) {
+			if (output_config->modeline) {
+				wlr_output_add_mode(wlr_output, output_config->modeline);
+			}
 			if (output_config->mode.width) {
 				set_mode(wlr_output, output_config);
 			}
