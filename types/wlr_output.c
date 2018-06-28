@@ -146,6 +146,13 @@ void wlr_output_enable(struct wlr_output *output, bool enable) {
 	}
 }
 
+bool wlr_output_add_mode(struct wlr_output *output, const char *modeline) {
+	if (!output->impl || !output->impl->add_mode) {
+		return false;
+	}
+	return output->impl->add_mode(output, modeline);
+}
+
 bool wlr_output_set_mode(struct wlr_output *output,
 		struct wlr_output_mode *mode) {
 	if (!output->impl || !output->impl->set_mode) {
