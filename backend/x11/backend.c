@@ -264,6 +264,7 @@ struct wlr_backend *wlr_x11_backend_create(struct wl_display *display,
 		wlr_log(L_ERROR, "Could not create event source");
 		goto error_x11;
 	}
+	wl_event_source_check(x11->event_source);
 
 	x11->screen = xcb_setup_roots_iterator(xcb_get_setup(x11->xcb_conn)).data;
 
