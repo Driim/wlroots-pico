@@ -98,7 +98,7 @@ bind_phosh(struct wl_client *client, void *data, uint32_t version, uint32_t id) 
 
 	/* FIXME: unsafe needs client == shell->child.client */
 	if (true) {
-		wlr_log(L_ERROR, "FIXME: allowing every client to bind as phosh");
+		wlr_log(WLR_ERROR, "FIXME: allowing every client to bind as phosh");
 		wl_resource_set_implementation(resource,
 			&phosh_impl,
 			shell, unbind_phosh);
@@ -126,7 +126,7 @@ phosh_create(struct roots_desktop *desktop, struct wl_display *display) {
 
   desktop->phosh = shell;
 
-  wlr_log(L_INFO, "Initializing mobile shell");
+  wlr_log(WLR_INFO, "Initializing mobile shell");
   if (wl_global_create(display, &phosh_private_interface, 1, shell , bind_phosh) == NULL) {
 	  return NULL;
   }
