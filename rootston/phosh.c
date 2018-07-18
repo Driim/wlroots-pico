@@ -12,13 +12,118 @@
 #include "rootston/desktop.h"
 #include "rootston/phosh.h"
 
-#define PHOSH_PRIVATE_VERSION 1
+#define PHOSH_PRIVATE_VERSION 2
+
+static void xdg_switcher_handle_list_xdg_surfaces(struct wl_client *client,
+		struct wl_resource *resource) {
+	struct phosh_private_xdg_switcher *xdg_switcher =
+		phosh_private_xdg_switcher_from_resource(resource);
+	struct phosh_private *phosh = xdg_switcher->phosh;
+	struct roots_desktop *desktop = phosh->desktop;
+	struct roots_view *view;
+
+	wl_list_for_each(view, &desktop->views, link) {
+		const char *app_id = NULL;
+		const char *title = NULL;
+
+		switch (view->type) {
+		case ROOTS_XDG_SHELL_VIEW:
+			if (view->xdg_surface->role != WLR_XDG_SURFACE_ROLE_TOPLEVEL)
+				continue;
+			app_id = view->xdg_surface->toplevel->app_id;
+			title = view->xdg_surface->toplevel->title;
+			break;
+		case ROOTS_XDG_SHELL_V6_VIEW:
+			if (view->xdg_surface_v6->role != WLR_XDG_SURFACE_V6_ROLE_TOPLEVEL)
+				continue;
+			app_id = view->xdg_surface_v6->toplevel->app_id;
+			title = view->xdg_surface_v6->toplevel->title;
+			break;
+		default:
+			/* other surface types would go here */
+			break;
+		}
+
+		if (app_id) {
+			phosh_private_xdg_switcher_send_xdg_surface (resource, app_id, title);
+			app_id = NULL;
+			title = NULL;
+		}
+	}
+	phosh_private_xdg_switcher_send_list_xdg_surfaces_done (resource);
+}
+
+
+static void xdg_switcher_handle_raise_xdg_surfaces(struct wl_client *client,
+		struct wl_resource *resource,
+		const char *app_id,
+		const char *title) {
+	struct phosh_private_xdg_switcher *xdg_switcher =
+		phosh_private_xdg_switcher_from_resource(resource);
+	struct phosh_private *phosh = xdg_switcher->phosh;
+	struct roots_desktop *desktop = phosh->desktop;
+	struct roots_view *view, *found_view;
+	struct roots_input *input = desktop->server->input;
+	struct roots_seat *seat = input_last_active_seat(input);
+
+	wlr_log(WLR_DEBUG, "will raise view %s", app_id);
+	wl_list_for_each(view, &desktop->views, link) {
+		switch (view->type) {
+		case ROOTS_XDG_SHELL_VIEW:
+			if (view->xdg_surface->role != WLR_XDG_SURFACE_ROLE_TOPLEVEL)
+				continue;
+			if (!strcmp(app_id, view->xdg_surface->toplevel->app_id) &&
+				!strcmp(title, view->xdg_surface->toplevel->title))
+				found_view = view;
+			break;
+		case ROOTS_XDG_SHELL_V6_VIEW:
+			if (view->xdg_surface_v6->role != WLR_XDG_SURFACE_V6_ROLE_TOPLEVEL)
+				continue;
+			if (!strcmp(app_id, view->xdg_surface_v6->toplevel->app_id) &&
+				!strcmp(title, view->xdg_surface_v6->toplevel->title))
+				found_view = view;
+			break;
+		default:
+			/* other surface types would go here */
+			break;
+		}
+	}
+
+	/* TODO: check if view belongs to this seat */
+	if (found_view) {
+		roots_seat_set_focus(seat, found_view);
+	}
+}
+
+
+static void xdg_switcher_handle_destroy(struct wl_client *client,
+		struct wl_resource *resource) {
+	wl_resource_destroy(resource);
+}
+
+
+static void xdg_switcher_handle_resource_destroy(struct wl_resource *resource) {
+	struct phosh_private_xdg_switcher *xdg_switcher =
+		phosh_private_xdg_switcher_from_resource(resource);
+
+	wlr_log(WLR_DEBUG, "Destroying xdg_switcher %p (res %p)", xdg_switcher,
+		xdg_switcher->resource);
+	wl_list_remove(&xdg_switcher->link);
+	free(xdg_switcher);
+}
+
+
+static const struct phosh_private_xdg_switcher_interface phosh_private_xdg_switcher_impl = {
+	.destroy = xdg_switcher_handle_destroy,
+	.list_xdg_surfaces = xdg_switcher_handle_list_xdg_surfaces,
+	.raise_xdg_surface = xdg_switcher_handle_raise_xdg_surfaces,
+};
+
 
 static void phosh_rotate_display(struct wl_client *client,
 	struct wl_resource *resource,
 	struct wl_resource *surface_resource,
-	uint32_t degrees)
-{
+	uint32_t degrees) {
   struct phosh_private *phosh = wl_resource_get_user_data(resource);
   enum wl_output_transform transform = WL_OUTPUT_TRANSFORM_NORMAL;
 
@@ -81,6 +186,40 @@ static void handle_phosh_layer_shell_new_surface(struct wl_listener *listener, v
 }
 
 
+void handle_get_xdg_switcher(struct wl_client *client,
+		struct wl_resource *phosh_private_resource,
+		uint32_t id) {
+	struct phosh_private *phosh =
+		phosh_private_from_resource(phosh_private_resource);
+
+	struct phosh_private_xdg_switcher *xdg_switcher =
+		calloc(1, sizeof(struct wlr_gamma_control));
+	if (xdg_switcher == NULL) {
+		wl_client_post_no_memory(client);
+		return;
+	}
+
+	int version = wl_resource_get_version(phosh_private_resource);
+	xdg_switcher->resource = wl_resource_create(client,
+		&phosh_private_xdg_switcher_interface, version, id);
+	if (xdg_switcher->resource == NULL) {
+		free(xdg_switcher);
+		wl_client_post_no_memory(client);
+		return;
+	}
+
+	wlr_log(WLR_DEBUG, "new phosh_private_xdg_switcher %p (res %p)", xdg_switcher,
+		xdg_switcher->resource);
+	wl_resource_set_implementation(xdg_switcher->resource,
+		&phosh_private_xdg_switcher_impl, xdg_switcher, xdg_switcher_handle_resource_destroy);
+
+	xdg_switcher->phosh = phosh;
+	wl_signal_init(&xdg_switcher->events.destroy);
+	wl_list_insert(&phosh->xdg_switchers, &xdg_switcher->link);
+}
+
+
+
 static void phosh_handle_resource_destroy(struct wl_resource *resource) {
 	struct phosh_private *phosh = wl_resource_get_user_data(resource);
 
@@ -92,6 +231,7 @@ static void phosh_handle_resource_destroy(struct wl_resource *resource) {
 
 static const struct phosh_private_interface phosh_private_impl = {
 	phosh_rotate_display,
+	handle_get_xdg_switcher,
 };
 
 
@@ -132,9 +272,11 @@ phosh_create(struct roots_desktop *desktop, struct wl_display *display) {
   wl_signal_add(&desktop->layer_shell->events.new_surface,
 	  &phosh->listeners.layer_shell_new_surface);
   phosh->listeners.layer_shell_new_surface.notify = handle_phosh_layer_shell_new_surface;
+  wl_list_init(&phosh->xdg_switchers);
 
   wlr_log(WLR_INFO, "Initializing phosh private interface");
   phosh->global = wl_global_create(display, &phosh_private_interface, PHOSH_PRIVATE_VERSION, phosh, phosh_bind);
+
   if (!phosh->global) {
 	  return NULL;
   }
@@ -148,9 +290,18 @@ void phosh_destroy(struct phosh_private *phosh) {
 	wl_global_destroy(phosh->global);
 }
 
+
 struct phosh_private *phosh_private_from_resource(
 		struct wl_resource *resource) {
 	assert(wl_resource_instance_of(resource, &phosh_private_interface,
 		&phosh_private_impl));
+	return wl_resource_get_user_data(resource);
+}
+
+
+struct phosh_private_xdg_switcher *phosh_private_xdg_switcher_from_resource(
+		struct wl_resource *resource) {
+	assert(wl_resource_instance_of(resource, &phosh_private_xdg_switcher_interface,
+		&phosh_private_xdg_switcher_impl));
 	return wl_resource_get_user_data(resource);
 }
