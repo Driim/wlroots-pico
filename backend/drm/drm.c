@@ -10,7 +10,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <strings.h>
 #include <time.h>
 #include <wayland-server.h>
 #include <wayland-util.h>
@@ -548,78 +547,6 @@ error_conn:
 	return false;
 }
 
-bool parse_modeline(const char *s, drmModeModeInfo *mode) {
-	char hsync[16];
-	char vsync[16];
-	float fclock;
-
-	memset(mode, 0, sizeof(*mode));
-	mode->type = DRM_MODE_TYPE_USERDEF;
-
-	if (sscanf(s, "%f %hd %hd %hd %hd %hd %hd %hd %hd %15s %15s",
-		   &fclock,
-		   &mode->hdisplay,
-		   &mode->hsync_start,
-		   &mode->hsync_end,
-		   &mode->htotal,
-		   &mode->vdisplay,
-		   &mode->vsync_start,
-		   &mode->vsync_end,
-		   &mode->vtotal, hsync, vsync) != 11) {
-		return false;
-	}
-
-	mode->clock = fclock * 1000;
-	mode->vrefresh = mode->clock * 1000.0 * 1000.0
-		/ mode->htotal / mode->vtotal;
-	if (strcasecmp(hsync, "+hsync") == 0) {
-		mode->flags |= DRM_MODE_FLAG_PHSYNC;
-	} else if (strcasecmp(hsync, "-hsync") == 0) {
-		mode->flags |= DRM_MODE_FLAG_NHSYNC;
-	} else {
-		return false;
-	}
-
-	if (strcasecmp(vsync, "+vsync") == 0) {
-		mode->flags |= DRM_MODE_FLAG_PVSYNC;
-	} else if (strcasecmp(vsync, "-vsync") == 0) {
-		mode->flags |= DRM_MODE_FLAG_NVSYNC;
-	} else {
-		return false;
-	}
-
-	snprintf(mode->name, sizeof(mode->name), "%dx%d@%d",
-		 mode->hdisplay, mode->vdisplay, mode->vrefresh / 1000);
-
-	return true;
-}
-
-static bool drm_connector_add_mode(struct wlr_output *output, const char *modeline) {
-	struct wlr_drm_connector *conn = (struct wlr_drm_connector *)output;
-	struct wlr_drm_mode *mode = calloc(1, sizeof(*mode));
-
-	if (modeline == NULL) {
-		return false;
-	}
-
-	if (!parse_modeline(modeline, &mode->drm_mode)) {
-		wlr_log(L_ERROR, "Parsing custom mode '%s' failed", modeline);
-		return false;
-	}
-
-	mode->wlr_mode.width = mode->drm_mode.hdisplay;
-	mode->wlr_mode.height = mode->drm_mode.vdisplay;
-	mode->wlr_mode.refresh = mode->drm_mode.vrefresh;
-
-	wlr_log(L_INFO, "Registered custom mode "
-			"%"PRId32"x%"PRId32"@%"PRId32,
-			mode->wlr_mode.width, mode->wlr_mode.height,
-			mode->wlr_mode.refresh);
-	wl_list_insert(&conn->output.modes, &mode->wlr_mode.link);
-	return true;
-}
-
-
 static void drm_connector_transform(struct wlr_output *output,
 		enum wl_output_transform transform) {
 	output->transform = transform;
@@ -814,7 +741,6 @@ static const struct wlr_output_impl output_impl = {
 	.destroy = drm_connector_destroy,
 	.make_current = drm_connector_make_current,
 	.swap_buffers = drm_connector_swap_buffers,
-	.add_mode = drm_connector_add_mode,
 	.set_gamma = drm_connector_set_gamma,
 	.get_gamma_size = drm_connector_get_gamma_size,
 };

@@ -322,8 +322,6 @@ static int config_ini_handler(void *user, const char *section, const char *name,
 			wlr_log(L_DEBUG, "Configured output %s with mode %dx%d@%f",
 					oc->name, oc->mode.width, oc->mode.height,
 					oc->mode.refresh_rate);
-		} else if (strcmp(name, "modeline") == 0) {
-			oc->modeline = strdup(value);
 		}
 	} else if (strncmp(cursor_prefix, section, strlen(cursor_prefix)) == 0) {
 		const char *seat_name = section + strlen(cursor_prefix);
@@ -462,7 +460,6 @@ void roots_config_destroy(struct roots_config *config) {
 	struct roots_output_config *oc, *otmp = NULL;
 	wl_list_for_each_safe(oc, otmp, &config->outputs, link) {
 		free(oc->name);
-		free(oc->modeline);
 		free(oc);
 	}
 

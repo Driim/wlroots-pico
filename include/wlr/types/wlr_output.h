@@ -113,10 +113,6 @@ void wlr_output_enable(struct wlr_output *output, bool enable);
 void wlr_output_create_global(struct wlr_output *output);
 void wlr_output_destroy_global(struct wlr_output *output);
 /**
- * Add mode to the list of available modes
- */
-bool wlr_output_add_mode(struct wlr_output *output, const char *modeline);
-/**
  * Sets the output mode.
  */
 bool wlr_output_set_mode(struct wlr_output *output,

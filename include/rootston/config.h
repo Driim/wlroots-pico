@@ -17,7 +17,6 @@ struct roots_output_config {
 		int width, height;
 		float refresh_rate;
 	} mode;
-	char *modeline;
 };
 
 struct roots_device_config {
