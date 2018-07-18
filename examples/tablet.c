@@ -295,7 +295,7 @@ void new_input_notify(struct wl_listener *listener, void *data) {
 		rules.options = getenv("XKB_DEFAULT_OPTIONS");
 		struct xkb_context *context = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
 		if (!context) {
-			wlr_log(L_ERROR, "Failed to create XKB context");
+			wlr_log(WLR_ERROR, "Failed to create XKB context");
 			exit(1);
 		}
 		wlr_keyboard_set_keymap(device->keyboard, xkb_map_new_from_names(context,
@@ -326,11 +326,11 @@ void new_input_notify(struct wl_listener *listener, void *data) {
 		tstate->destroy.notify = tablet_tool_destroy_notify;
 		wl_signal_add(&device->events.destroy, &tstate->destroy);
 		tstate->axis.notify = tablet_tool_axis_notify;
-		wl_signal_add(&device->tablet_tool->events.axis, &tstate->axis);
+		wl_signal_add(&device->tablet->events.axis, &tstate->axis);
 		tstate->proximity.notify = tablet_tool_proximity_notify;
-		wl_signal_add(&device->tablet_tool->events.proximity, &tstate->proximity);
+		wl_signal_add(&device->tablet->events.proximity, &tstate->proximity);
 		tstate->button.notify = tablet_tool_button_notify;
-		wl_signal_add(&device->tablet_tool->events.button, &tstate->button);
+		wl_signal_add(&device->tablet->events.button, &tstate->button);
 		wl_list_insert(&sample->tablet_tools, &tstate->link);
 		break;
 	default:
@@ -340,7 +340,7 @@ void new_input_notify(struct wl_listener *listener, void *data) {
 
 
 int main(int argc, char *argv[]) {
-	wlr_log_init(L_DEBUG, NULL);
+	wlr_log_init(WLR_DEBUG, NULL);
 	struct wl_display *display = wl_display_create();
 	struct sample_state state = {
 		.display = display,
@@ -362,11 +362,11 @@ int main(int argc, char *argv[]) {
 
 	state.renderer = wlr_backend_get_renderer(wlr);
 	if (!state.renderer) {
-		wlr_log(L_ERROR, "Could not start compositor, OOM");
+		wlr_log(WLR_ERROR, "Could not start compositor, OOM");
 		exit(EXIT_FAILURE);
 	}
 	if (!wlr_backend_start(wlr)) {
-		wlr_log(L_ERROR, "Failed to start backend");
+		wlr_log(WLR_ERROR, "Failed to start backend");
 		wlr_backend_destroy(wlr);
 		exit(1);
 	}

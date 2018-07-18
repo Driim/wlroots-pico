@@ -51,6 +51,10 @@ static void gamma_control_set_gamma(struct wl_client *client,
 	struct wlr_gamma_control *gamma_control =
 		gamma_control_from_resource(gamma_control_resource);
 
+	if (gamma_control == NULL) {
+		return;
+	}
+
 	if (red->size != green->size || red->size != blue->size) {
 		wl_resource_post_error(gamma_control_resource,
 			GAMMA_CONTROL_ERROR_INVALID_GAMMA,
@@ -109,7 +113,7 @@ static void gamma_control_manager_get_gamma_control(struct wl_client *client,
 		wl_client_post_no_memory(client);
 		return;
 	}
-	wlr_log(L_DEBUG, "new gamma_control %p (res %p)", gamma_control,
+	wlr_log(WLR_DEBUG, "new gamma_control %p (res %p)", gamma_control,
 		gamma_control->resource);
 	wl_resource_set_implementation(gamma_control->resource,
 		&gamma_control_impl, gamma_control, gamma_control_destroy_resource);
@@ -156,7 +160,7 @@ void wlr_gamma_control_manager_destroy(
 	wl_list_for_each_safe(gamma_control, tmp, &manager->controls, link) {
 		gamma_control_destroy(gamma_control);
 	}
-	wl_global_destroy(manager->wl_global);
+	wl_global_destroy(manager->global);
 	free(manager);
 }
 
@@ -173,14 +177,14 @@ struct wlr_gamma_control_manager *wlr_gamma_control_manager_create(
 	if (!manager) {
 		return NULL;
 	}
-	struct wl_global *wl_global = wl_global_create(display,
+	struct wl_global *global = wl_global_create(display,
 		&gamma_control_manager_interface, 1, manager,
 		gamma_control_manager_bind);
-	if (!wl_global) {
+	if (!global) {
 		free(manager);
 		return NULL;
 	}
-	manager->wl_global = wl_global;
+	manager->global = global;
 
 	wl_list_init(&manager->controls);
 

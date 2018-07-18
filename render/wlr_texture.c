@@ -47,10 +47,25 @@ void wlr_texture_get_size(struct wlr_texture *texture, int *width,
 	return texture->impl->get_size(texture, width, height);
 }
 
+bool wlr_texture_is_opaque(struct wlr_texture *texture) {
+	if (!texture->impl->is_opaque) {
+		return false;
+	}
+	return texture->impl->is_opaque(texture);
+}
+
 bool wlr_texture_write_pixels(struct wlr_texture *texture,
 		enum wl_shm_format wl_fmt, uint32_t stride, uint32_t width,
 		uint32_t height, uint32_t src_x, uint32_t src_y, uint32_t dst_x,
 		uint32_t dst_y, const void *data) {
 	return texture->impl->write_pixels(texture, wl_fmt, stride, width, height,
 		src_x, src_y, dst_x, dst_y, data);
+}
+
+bool wlr_texture_to_dmabuf(struct wlr_texture *texture,
+		struct wlr_dmabuf_attributes *attribs) {
+	if (!texture->impl->to_dmabuf) {
+		return false;
+	}
+	return texture->impl->to_dmabuf(texture, attribs);
 }

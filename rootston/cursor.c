@@ -200,8 +200,8 @@ static void roots_cursor_update_position(
 	case ROOTS_CURSOR_ROTATE:
 		view = roots_seat_get_focus(seat);
 		if (view != NULL) {
-			int ox = view->x + view->wlr_surface->current->width/2,
-				oy = view->y + view->wlr_surface->current->height/2;
+			int ox = view->x + view->wlr_surface->current.width/2,
+				oy = view->y + view->wlr_surface->current.height/2;
 			int ux = cursor->offs_x - ox,
 				uy = cursor->offs_y - oy;
 			int vx = cursor->cursor->x - ox,
@@ -239,12 +239,12 @@ static void roots_cursor_press_button(struct roots_cursor *cursor,
 			break;
 		case BTN_RIGHT:
 			edges = 0;
-			if (sx < view->wlr_surface->current->width/2) {
+			if (sx < view->wlr_surface->current.width/2) {
 				edges |= WLR_EDGE_LEFT;
 			} else {
 				edges |= WLR_EDGE_RIGHT;
 			}
-			if (sy < view->wlr_surface->current->height/2) {
+			if (sy < view->wlr_surface->current.height/2) {
 				edges |= WLR_EDGE_TOP;
 			} else {
 				edges |= WLR_EDGE_BOTTOM;
@@ -429,7 +429,7 @@ void roots_cursor_handle_request_set_cursor(struct roots_cursor *cursor,
 	}
 	if (event->seat_client->client != focused_client ||
 			cursor->mode != ROOTS_CURSOR_PASSTHROUGH) {
-		wlr_log(L_DEBUG, "Denying request to set cursor from unfocused client");
+		wlr_log(WLR_DEBUG, "Denying request to set cursor from unfocused client");
 		return;
 	}
 

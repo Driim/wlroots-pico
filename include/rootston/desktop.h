@@ -22,6 +22,7 @@
 #include <wlr/types/wlr_list.h>
 #include <wlr/types/wlr_idle.h>
 #include <wlr/types/wlr_idle_inhibit_v1.h>
+#include <wlr/types/wlr_screencopy_v1.h>
 #include "rootston/view.h"
 #include "rootston/config.h"
 #include "rootston/output.h"
@@ -46,6 +47,7 @@ struct roots_desktop {
 	struct wlr_xdg_shell *xdg_shell;
 	struct wlr_gamma_control_manager *gamma_control_manager;
 	struct wlr_screenshooter *screenshooter;
+	struct wlr_export_dmabuf_manager_v1 *export_dmabuf_manager_v1;
 	struct wlr_server_decoration_manager *server_decoration_manager;
 	struct wlr_primary_selection_device_manager *primary_selection_device_manager;
 	struct wlr_idle *idle;
@@ -54,6 +56,8 @@ struct roots_desktop {
 	struct wlr_linux_dmabuf *linux_dmabuf;
 	struct wlr_layer_shell *layer_shell;
 	struct wlr_virtual_keyboard_manager_v1 *virtual_keyboard;
+	struct wlr_screencopy_manager_v1 *screencopy;
+	struct wlr_tablet_manager_v2 *tablet_v2;
 
 	struct wl_listener new_output;
 	struct wl_listener layout_change;

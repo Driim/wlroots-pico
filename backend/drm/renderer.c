@@ -22,7 +22,7 @@ bool init_drm_renderer(struct wlr_drm_backend *drm,
 		struct wlr_drm_renderer *renderer, wlr_renderer_create_func_t create_renderer_func) {
 	renderer->gbm = gbm_create_device(drm->fd);
 	if (!renderer->gbm) {
-		wlr_log(L_ERROR, "Failed to create GBM device");
+		wlr_log(WLR_ERROR, "Failed to create GBM device");
 		return false;
 	}
 
@@ -34,7 +34,7 @@ bool init_drm_renderer(struct wlr_drm_backend *drm,
 		EGL_PLATFORM_GBM_MESA, renderer->gbm, NULL, GBM_FORMAT_ARGB8888);
 
 	if (!renderer->wlr_rend) {
-		wlr_log(L_ERROR, "Failed to create EGL/WLR renderer");
+		wlr_log(WLR_ERROR, "Failed to create EGL/WLR renderer");
 		goto error_gbm;
 	}
 
@@ -83,13 +83,13 @@ bool init_drm_surface(struct wlr_drm_surface *surf,
 	surf->gbm = gbm_surface_create(renderer->gbm, width, height,
 		format, GBM_BO_USE_RENDERING | flags);
 	if (!surf->gbm) {
-		wlr_log_errno(L_ERROR, "Failed to create GBM surface");
+		wlr_log_errno(WLR_ERROR, "Failed to create GBM surface");
 		goto error_zero;
 	}
 
 	surf->egl = wlr_egl_create_surface(&renderer->egl, surf->gbm);
 	if (surf->egl == EGL_NO_SURFACE) {
-		wlr_log(L_ERROR, "Failed to create EGL surface");
+		wlr_log(WLR_ERROR, "Failed to create EGL surface");
 		goto error_gbm;
 	}
 
@@ -160,6 +160,34 @@ void post_drm_surface(struct wlr_drm_surface *surf) {
 	}
 }
 
+bool export_drm_bo(struct gbm_bo *bo, struct wlr_dmabuf_attributes *attribs) {
+	memset(attribs, 0, sizeof(struct wlr_dmabuf_attributes));
+
+	attribs->n_planes = gbm_bo_get_plane_count(bo);
+	if (attribs->n_planes > WLR_DMABUF_MAX_PLANES) {
+		return false;
+	}
+
+	attribs->width = gbm_bo_get_width(bo);
+	attribs->height = gbm_bo_get_height(bo);
+	attribs->format = gbm_bo_get_format(bo);
+	attribs->modifier = gbm_bo_get_modifier(bo);
+
+	for (int i = 0; i < attribs->n_planes; ++i) {
+		attribs->offset[i] = gbm_bo_get_offset(bo, i);
+		attribs->stride[i] = gbm_bo_get_stride_for_plane(bo, i);
+		attribs->fd[i] = gbm_bo_get_fd(bo);
+		if (attribs->fd[i] < 0) {
+			for (int j = 0; j < i; ++j) {
+				close(attribs->fd[j]);
+			}
+			return false;
+		}
+	}
+
+	return true;
+}
+
 struct tex {
 	struct wlr_egl *egl;
 	EGLImageKHR img;
@@ -186,16 +214,11 @@ static struct wlr_texture *get_tex_for_bo(struct wlr_drm_renderer *renderer,
 		return NULL;
 	}
 
-	struct wlr_dmabuf_attributes attribs = {
-		.n_planes = 1,
-		.width = gbm_bo_get_width(bo),
-		.height = gbm_bo_get_height(bo),
-		.format = gbm_bo_get_format(bo),
-		.modifier = DRM_FORMAT_MOD_LINEAR,
-	};
-	attribs.offset[0] = 0;
-	attribs.stride[0] = gbm_bo_get_stride_for_plane(bo, 0);
-	attribs.fd[0] = gbm_bo_get_fd(bo);
+	struct wlr_dmabuf_attributes attribs;
+	if (!export_drm_bo(bo, &attribs)) {
+		free(tex);
+		return NULL;
+	}
 
 	tex->tex = wlr_texture_from_dmabuf(renderer->wlr_rend, &attribs);
 	if (tex->tex == NULL) {

@@ -371,7 +371,7 @@ void handle_layer_shell_surface(struct wl_listener *listener, void *data) {
 	struct wlr_layer_surface *layer_surface = data;
 	struct roots_desktop *desktop =
 		wl_container_of(listener, desktop, layer_shell_surface);
-	wlr_log(L_DEBUG, "new layer surface: namespace %s layer %d anchor %d "
+	wlr_log(WLR_DEBUG, "new layer surface: namespace %s layer %d anchor %d "
 			"size %dx%d margin %d,%d,%d,%d",
 		layer_surface->namespace, layer_surface->layer, layer_surface->layer,
 		layer_surface->client_pending.desired_width,
@@ -380,12 +380,6 @@ void handle_layer_shell_surface(struct wl_listener *listener, void *data) {
 		layer_surface->client_pending.margin.right,
 		layer_surface->client_pending.margin.bottom,
 		layer_surface->client_pending.margin.left);
-
-	struct roots_layer_surface *roots_surface =
-		calloc(1, sizeof(struct roots_layer_surface));
-	if (!roots_surface) {
-		return;
-	}
 
 	if (!layer_surface->output) {
 		struct roots_input *input = desktop->server->input;
@@ -396,7 +390,7 @@ void handle_layer_shell_surface(struct wl_listener *listener, void *data) {
 					seat->cursor->cursor->x,
 					seat->cursor->cursor->y);
 		if (!output) {
-			wlr_log(L_ERROR, "Couldn't find output at (%.0f,%.0f)",
+			wlr_log(WLR_ERROR, "Couldn't find output at (%.0f,%.0f)",
 				seat->cursor->cursor->x,
 				seat->cursor->cursor->y);
 			output = wlr_output_layout_get_center_output(desktop->layout);
@@ -407,6 +401,12 @@ void handle_layer_shell_surface(struct wl_listener *listener, void *data) {
 			wlr_layer_surface_close(layer_surface);
 			return;
 		}
+	}
+
+	struct roots_layer_surface *roots_surface =
+		calloc(1, sizeof(struct roots_layer_surface));
+	if (!roots_surface) {
+		return;
 	}
 
 	roots_surface->surface_commit.notify = handle_surface_commit;

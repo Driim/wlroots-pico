@@ -7,7 +7,7 @@
 #include "xdg-shell-unstable-v6-protocol.h"
 
 struct wlr_xdg_shell_v6 {
-	struct wl_global *wl_global;
+	struct wl_global *global;
 	struct wl_list clients;
 	struct wl_list popup_grabs;
 	uint32_t ping_timeout;
@@ -161,7 +161,8 @@ struct wlr_xdg_surface_v6 {
 	struct wlr_box next_geometry;
 	struct wlr_box geometry;
 
-	struct wl_listener surface_destroy_listener;
+	struct wl_listener surface_destroy;
+	struct wl_listener surface_commit;
 
 	struct {
 		struct wl_signal destroy;
@@ -329,11 +330,19 @@ struct wlr_xdg_surface_v6 *wlr_xdg_surface_v6_from_wlr_surface(
 void wlr_xdg_surface_v6_get_geometry(struct wlr_xdg_surface_v6 *surface, struct wlr_box *box);
 
 /**
- * Call `iterator` on each surface in the xdg-surface tree, with the surface's
- * position relative to the root xdg-surface. The function is called from root to
- * leaves (in rendering order).
+ * Call `iterator` on each surface and popup in the xdg-surface tree, with the
+ * surface's position relative to the root xdg-surface. The function is called
+ * from root to leaves (in rendering order).
  */
 void wlr_xdg_surface_v6_for_each_surface(struct wlr_xdg_surface_v6 *surface,
+	wlr_surface_iterator_func_t iterator, void *user_data);
+
+/**
+ * Call `iterator` on each popup in the xdg-surface tree, with the popup's
+ * position relative to the root xdg-surface. The function is called from root
+ * to leaves (in rendering order).
+ */
+void wlr_xdg_surface_v6_for_each_popup(struct wlr_xdg_surface_v6 *surface,
 	wlr_surface_iterator_func_t iterator, void *user_data);
 
 #endif

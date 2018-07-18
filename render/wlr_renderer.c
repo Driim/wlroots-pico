@@ -25,9 +25,12 @@ void wlr_renderer_init(struct wlr_renderer *renderer,
 }
 
 void wlr_renderer_destroy(struct wlr_renderer *r) {
+	if (!r) {
+		return;
+	}
 	wlr_signal_emit_safe(&r->events.destroy, r);
 
-	if (r && r->impl && r->impl->destroy) {
+	if (r->impl && r->impl->destroy) {
 		r->impl->destroy(r);
 	} else {
 		free(r);
@@ -136,14 +139,14 @@ int wlr_renderer_get_dmabuf_modifiers(struct wlr_renderer *r, int format,
 }
 
 bool wlr_renderer_read_pixels(struct wlr_renderer *r, enum wl_shm_format fmt,
-		uint32_t stride, uint32_t width, uint32_t height,
+		uint32_t *flags, uint32_t stride, uint32_t width, uint32_t height,
 		uint32_t src_x, uint32_t src_y, uint32_t dst_x, uint32_t dst_y,
 		void *data) {
 	if (!r->impl->read_pixels) {
 		return false;
 	}
-	return r->impl->read_pixels(r, fmt, stride, width, height, src_x, src_y,
-		dst_x, dst_y, data);
+	return r->impl->read_pixels(r, fmt, flags, stride, width, height,
+		src_x, src_y, dst_x, dst_y, data);
 }
 
 bool wlr_renderer_format_supported(struct wlr_renderer *r,
@@ -154,14 +157,14 @@ bool wlr_renderer_format_supported(struct wlr_renderer *r,
 void wlr_renderer_init_wl_display(struct wlr_renderer *r,
 		struct wl_display *wl_display) {
 	if (wl_display_init_shm(wl_display)) {
-		wlr_log(L_ERROR, "Failed to initialize shm");
+		wlr_log(WLR_ERROR, "Failed to initialize shm");
 		return;
 	}
 
 	size_t len;
 	const enum wl_shm_format *formats = wlr_renderer_get_formats(r, &len);
 	if (formats == NULL) {
-		wlr_log(L_ERROR, "Failed to initialize shm: cannot get formats");
+		wlr_log(WLR_ERROR, "Failed to initialize shm: cannot get formats");
 		return;
 	}
 
@@ -182,7 +185,7 @@ struct wlr_renderer *wlr_renderer_autocreate(struct wlr_egl *egl,
 		EGLenum platform, void *remote_display, EGLint *config_attribs,
 		EGLint visual_id) {
 	if (!wlr_egl_init(egl, platform, remote_display, config_attribs, visual_id)) {
-		wlr_log(L_ERROR, "Could not initialize EGL");
+		wlr_log(WLR_ERROR, "Could not initialize EGL");
 		return NULL;
 	}
 

@@ -23,6 +23,7 @@ static void xdg_pointer_grab_end(struct wlr_seat_pointer_grab *grab) {
 	}
 
 	wlr_seat_pointer_end_grab(grab->seat);
+	wlr_seat_keyboard_end_grab(grab->seat);
 }
 
 static void xdg_pointer_grab_enter(struct wlr_seat_pointer_grab *grab,
@@ -88,7 +89,7 @@ static void xdg_keyboard_grab_modifiers(struct wlr_seat_keyboard_grab *grab,
 }
 
 static void xdg_keyboard_grab_cancel(struct wlr_seat_keyboard_grab *grab) {
-	wlr_seat_keyboard_end_grab(grab->seat);
+	wlr_seat_pointer_end_grab(grab->seat);
 }
 
 static const struct wlr_keyboard_grab_interface xdg_keyboard_grab_impl = {
@@ -173,6 +174,9 @@ static void xdg_popup_handle_grab(struct wl_client *client,
 		xdg_surface_from_xdg_popup_resource(resource);
 	struct wlr_seat_client *seat_client =
 		wlr_seat_client_from_resource(seat_resource);
+	if (!surface) {
+		return;
+	}
 
 	if (surface->popup->committed) {
 		wl_resource_post_error(surface->popup->resource,
@@ -213,7 +217,7 @@ static void xdg_popup_handle_destroy(struct wl_client *client,
 	struct wlr_xdg_surface_v6 *surface =
 		xdg_surface_from_xdg_popup_resource(resource);
 
-	if (!wl_list_empty(&surface->popups)) {
+	if (surface && !wl_list_empty(&surface->popups)) {
 		wl_resource_post_error(surface->client->resource,
 			ZXDG_SHELL_V6_ERROR_NOT_THE_TOPMOST_POPUP,
 			"xdg_popup was destroyed while it was not the topmost popup");
@@ -245,6 +249,11 @@ void handle_xdg_surface_v6_popup_committed(struct wlr_xdg_surface_v6 *surface) {
 	}
 }
 
+const struct wlr_surface_role xdg_popup_v6_surface_role = {
+	.name = "xdg_popup_v6",
+	.commit = handle_xdg_surface_v6_committed,
+};
+
 void create_xdg_popup_v6(struct wlr_xdg_surface_v6 *xdg_surface,
 		struct wlr_xdg_surface_v6 *parent,
 		struct wlr_xdg_positioner_v6_resource *positioner, int32_t id) {
@@ -256,8 +265,8 @@ void create_xdg_popup_v6(struct wlr_xdg_surface_v6 *xdg_surface,
 		return;
 	}
 
-	if (wlr_surface_set_role(xdg_surface->surface, XDG_POPUP_V6_ROLE,
-			xdg_surface->resource, ZXDG_SHELL_V6_ERROR_ROLE)) {
+	if (!wlr_surface_set_role(xdg_surface->surface, &xdg_popup_v6_surface_role,
+			xdg_surface, xdg_surface->resource, ZXDG_SHELL_V6_ERROR_ROLE)) {
 		return;
 	}
 

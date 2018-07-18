@@ -10,6 +10,7 @@
 #include <wlr/types/wlr_box.h>
 #include <wlr/types/wlr_matrix.h>
 #include <wlr/types/wlr_output.h>
+#include <wlr/types/wlr_seat.h>
 #include <wlr/types/wlr_surface.h>
 #include <wlr/util/log.h>
 #include <wlr/util/region.h>
@@ -85,9 +86,9 @@ static const struct wl_output_interface output_impl = {
 	.release = output_handle_release,
 };
 
-static void wl_output_bind(struct wl_client *wl_client, void *data,
+static void output_bind(struct wl_client *wl_client, void *data,
 		uint32_t version, uint32_t id) {
-	struct wlr_output *wlr_output = data;
+	struct wlr_output *output = data;
 
 	struct wl_resource *resource = wl_resource_create(wl_client,
 		&wl_output_interface, version, id);
@@ -95,31 +96,36 @@ static void wl_output_bind(struct wl_client *wl_client, void *data,
 		wl_client_post_no_memory(wl_client);
 		return;
 	}
-	wl_resource_set_implementation(resource, &output_impl, wlr_output,
+	wl_resource_set_implementation(resource, &output_impl, output,
 		output_handle_resource_destroy);
-	wl_list_insert(&wlr_output->wl_resources, wl_resource_get_link(resource));
+	wl_list_insert(&output->resources, wl_resource_get_link(resource));
 	output_send_to_resource(resource);
 }
 
 void wlr_output_create_global(struct wlr_output *output) {
-	if (output->wl_global != NULL) {
+	if (output->global != NULL) {
 		return;
 	}
-	struct wl_global *wl_global = wl_global_create(output->display,
-		&wl_output_interface, OUTPUT_VERSION, output, wl_output_bind);
-	output->wl_global = wl_global;
+	output->global = wl_global_create(output->display,
+		&wl_output_interface, OUTPUT_VERSION, output, output_bind);
+	if (output->global == NULL) {
+		wlr_log(WLR_ERROR, "Failed to allocate wl_output global");
+	}
 }
 
 void wlr_output_destroy_global(struct wlr_output *output) {
-	if (output->wl_global == NULL) {
+	if (output->global == NULL) {
 		return;
 	}
+	// Make all output resources inert
 	struct wl_resource *resource, *tmp;
-	wl_resource_for_each_safe(resource, tmp, &output->wl_resources) {
-		wl_resource_destroy(resource);
+	wl_resource_for_each_safe(resource, tmp, &output->resources) {
+		wl_resource_set_user_data(resource, NULL);
+		wl_list_remove(wl_resource_get_link(resource));
+		wl_list_init(wl_resource_get_link(resource));
 	}
-	wl_global_destroy(output->wl_global);
-	output->wl_global = NULL;
+	wl_global_destroy(output->global);
+	output->global = NULL;
 }
 
 void wlr_output_update_enabled(struct wlr_output *output, bool enabled) {
@@ -183,7 +189,7 @@ void wlr_output_update_custom_mode(struct wlr_output *output, int32_t width,
 	output->refresh = refresh;
 
 	struct wl_resource *resource;
-	wl_resource_for_each(resource, &output->wl_resources) {
+	wl_resource_for_each(resource, &output->resources) {
 		output_send_current_mode_to_resource(resource);
 	}
 
@@ -197,7 +203,7 @@ void wlr_output_set_transform(struct wlr_output *output,
 
 	// TODO: only send geometry and done
 	struct wl_resource *resource;
-	wl_resource_for_each(resource, &output->wl_resources) {
+	wl_resource_for_each(resource, &output->resources) {
 		output_send_to_resource(resource);
 	}
 
@@ -215,7 +221,7 @@ void wlr_output_set_position(struct wlr_output *output, int32_t lx,
 
 	// TODO: only send geometry and done
 	struct wl_resource *resource;
-	wl_resource_for_each(resource, &output->wl_resources) {
+	wl_resource_for_each(resource, &output->resources) {
 		output_send_to_resource(resource);
 	}
 }
@@ -229,7 +235,7 @@ void wlr_output_set_scale(struct wlr_output *output, float scale) {
 
 	// TODO: only send mode and done
 	struct wl_resource *resource;
-	wl_resource_for_each(resource, &output->wl_resources) {
+	wl_resource_for_each(resource, &output->resources) {
 		output_send_to_resource(resource);
 	}
 
@@ -255,7 +261,7 @@ void wlr_output_init(struct wlr_output *output, struct wlr_backend *backend,
 	output->transform = WL_OUTPUT_TRANSFORM_NORMAL;
 	output->scale = 1;
 	wl_list_init(&output->cursors);
-	wl_list_init(&output->wl_resources);
+	wl_list_init(&output->resources);
 	wl_signal_init(&output->events.frame);
 	wl_signal_init(&output->events.needs_swap);
 	wl_signal_init(&output->events.swap_buffers);
@@ -352,13 +358,13 @@ static void output_fullscreen_surface_get_box(struct wlr_output *output,
 	int width, height;
 	wlr_output_effective_resolution(output, &width, &height);
 
-	int x = (width - surface->current->width) / 2;
-	int y = (height - surface->current->height) / 2;
+	int x = (width - surface->current.width) / 2;
+	int y = (height - surface->current.height) / 2;
 
 	box->x = x * output->scale;
 	box->y = y * output->scale;
-	box->width = surface->current->width * output->scale;
-	box->height = surface->current->height * output->scale;
+	box->width = surface->current.width * output->scale;
+	box->height = surface->current.height * output->scale;
 }
 
 static void output_fullscreen_surface_render(struct wlr_output *output,
@@ -378,7 +384,7 @@ static void output_fullscreen_surface_render(struct wlr_output *output,
 
 	float matrix[9];
 	enum wl_output_transform transform =
-		wlr_output_transform_invert(surface->current->transform);
+		wlr_output_transform_invert(surface->current.transform);
 	wlr_matrix_project_box(matrix, &box, transform, 0,
 		output->transform_matrix);
 
@@ -403,11 +409,6 @@ static void output_cursor_get_box(struct wlr_output_cursor *cursor,
 	box->y = cursor->y - cursor->hotspot_y;
 	box->width = cursor->width;
 	box->height = cursor->height;
-
-	if (cursor->surface != NULL) {
-		box->x += cursor->surface->current->sx * cursor->output->scale;
-		box->y += cursor->surface->current->sy * cursor->output->scale;
-	}
 }
 
 static void output_cursor_render(struct wlr_output_cursor *cursor,
@@ -459,7 +460,7 @@ surface_damage_finish:
 bool wlr_output_swap_buffers(struct wlr_output *output, struct timespec *when,
 		pixman_region32_t *damage) {
 	if (output->frame_pending) {
-		wlr_log(L_ERROR, "Tried to swap buffers when a frame is pending");
+		wlr_log(WLR_ERROR, "Tried to swap buffers when a frame is pending");
 		return false;
 	}
 	if (output->idle_frame != NULL) {
@@ -467,7 +468,12 @@ bool wlr_output_swap_buffers(struct wlr_output *output, struct timespec *when,
 		output->idle_frame = NULL;
 	}
 
-	wlr_signal_emit_safe(&output->events.swap_buffers, damage);
+	struct wlr_output_event_swap_buffers event = {
+		.output = output,
+		.when = when,
+		.damage = damage,
+	};
+	wlr_signal_emit_safe(&output->events.swap_buffers, &event);
 
 	int width, height;
 	wlr_output_transformed_resolution(output, &width, &height);
@@ -481,8 +487,8 @@ bool wlr_output_swap_buffers(struct wlr_output *output, struct timespec *when,
 		pixman_region32_intersect(&render_damage, &render_damage, damage);
 	}
 
+	struct timespec now;
 	if (when == NULL) {
-		struct timespec now;
 		clock_gettime(CLOCK_MONOTONIC, &now);
 		when = &now;
 	}
@@ -560,6 +566,14 @@ uint32_t wlr_output_get_gamma_size(struct wlr_output *output) {
 	return output->impl->get_gamma_size(output);
 }
 
+bool wlr_output_export_dmabuf(struct wlr_output *output,
+		struct wlr_dmabuf_attributes *attribs) {
+	if (!output->impl->export_dmabuf) {
+		return false;
+	}
+	return output->impl->export_dmabuf(output, attribs);
+}
+
 void wlr_output_update_needs_swap(struct wlr_output *output) {
 	output->needs_swap = true;
 	wlr_signal_emit_safe(&output->events.needs_swap, output);
@@ -589,10 +603,10 @@ static void output_fullscreen_surface_handle_commit(
 		fullscreen_surface_commit);
 	struct wlr_surface *surface = output->fullscreen_surface;
 
-	if (output->fullscreen_width != surface->current->width ||
-			output->fullscreen_height != surface->current->height) {
-		output->fullscreen_width = surface->current->width;
-		output->fullscreen_height = surface->current->height;
+	if (output->fullscreen_width != surface->current.width ||
+			output->fullscreen_height != surface->current.height) {
+		output->fullscreen_width = surface->current.width;
+		output->fullscreen_height = surface->current.height;
 		wlr_output_damage_whole(output);
 		return;
 	}
@@ -602,7 +616,7 @@ static void output_fullscreen_surface_handle_commit(
 
 	pixman_region32_t damage;
 	pixman_region32_init(&damage);
-	pixman_region32_copy(&damage, &surface->current->surface_damage);
+	pixman_region32_copy(&damage, &surface->current.surface_damage);
 	wlr_region_scale(&damage, &damage, output->scale);
 	pixman_region32_translate(&damage, box.x, box.y);
 	pixman_region32_union(&output->damage, &output->damage, &damage);
@@ -701,8 +715,8 @@ static bool output_cursor_attempt_hardware(struct wlr_output_cursor *cursor) {
 	struct wlr_texture *texture = cursor->texture;
 	if (cursor->surface != NULL) {
 		texture = wlr_surface_get_texture(cursor->surface);
-		scale = cursor->surface->current->scale;
-		transform = cursor->surface->current->transform;
+		scale = cursor->surface->current.scale;
+		transform = cursor->surface->current.transform;
 	}
 
 	struct wlr_output_cursor *hwcur = cursor->output->hardware_cursor;
@@ -753,25 +767,33 @@ bool wlr_output_cursor_set_image(struct wlr_output_cursor *cursor,
 		return true;
 	}
 
-	wlr_log(L_DEBUG, "Falling back to software cursor");
+	wlr_log(WLR_DEBUG, "Falling back to software cursor");
 	output_cursor_damage_whole(cursor);
 	return true;
 }
 
-static void output_cursor_commit(struct wlr_output_cursor *cursor) {
+static void output_cursor_commit(struct wlr_output_cursor *cursor,
+		bool update_hotspot) {
 	if (cursor->output->hardware_cursor != cursor) {
 		output_cursor_damage_whole(cursor);
 	}
 
+	struct wlr_surface *surface = cursor->surface;
+	assert(surface != NULL);
+
 	// Some clients commit a cursor surface with a NULL buffer to hide it.
-	cursor->enabled = wlr_surface_has_buffer(cursor->surface);
-	cursor->width = cursor->surface->current->width * cursor->output->scale;
-	cursor->height = cursor->surface->current->height * cursor->output->scale;
+	cursor->enabled = wlr_surface_has_buffer(surface);
+	cursor->width = surface->current.width * cursor->output->scale;
+	cursor->height = surface->current.height * cursor->output->scale;
+	if (update_hotspot) {
+		cursor->hotspot_x -= surface->current.dx * cursor->output->scale;
+		cursor->hotspot_y -= surface->current.dy * cursor->output->scale;
+	}
 
 	if (output_cursor_attempt_hardware(cursor)) {
 		struct timespec now;
 		clock_gettime(CLOCK_MONOTONIC, &now);
-		wlr_surface_send_frame_done(cursor->surface, &now);
+		wlr_surface_send_frame_done(surface, &now);
 		return;
 	}
 
@@ -781,9 +803,9 @@ static void output_cursor_commit(struct wlr_output_cursor *cursor) {
 
 static void output_cursor_handle_commit(struct wl_listener *listener,
 		void *data) {
-	struct wlr_output_cursor *cursor = wl_container_of(listener, cursor,
-		surface_commit);
-	output_cursor_commit(cursor);
+	struct wlr_output_cursor *cursor =
+		wl_container_of(listener, cursor, surface_commit);
+	output_cursor_commit(cursor, true);
 }
 
 static void output_cursor_handle_destroy(struct wl_listener *listener,
@@ -795,10 +817,6 @@ static void output_cursor_handle_destroy(struct wl_listener *listener,
 
 void wlr_output_cursor_set_surface(struct wlr_output_cursor *cursor,
 		struct wlr_surface *surface, int32_t hotspot_x, int32_t hotspot_y) {
-	if (surface && strcmp(surface->role, "wl_pointer-cursor") != 0) {
-		return;
-	}
-
 	hotspot_x *= cursor->output->scale;
 	hotspot_y *= cursor->output->scale;
 
@@ -829,7 +847,7 @@ void wlr_output_cursor_set_surface(struct wlr_output_cursor *cursor,
 	if (surface != NULL) {
 		wl_signal_add(&surface->events.commit, &cursor->surface_commit);
 		wl_signal_add(&surface->events.destroy, &cursor->surface_destroy);
-		output_cursor_commit(cursor);
+		output_cursor_commit(cursor, false);
 
 		cursor->visible = false;
 		output_cursor_update_visible(cursor);
