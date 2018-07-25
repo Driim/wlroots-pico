@@ -20,7 +20,7 @@ static void phosh_rotate_display(struct wl_client *client,
   struct phosh *shell = wl_resource_get_user_data(resource);
   enum wl_output_transform transform = WL_OUTPUT_TRANSFORM_NORMAL;
 
-  wlr_trace("rotation: %d", degrees);
+  wlr_log(WLR_DEBUG, "rotation: %d", degrees);
   if (degrees % 90 != 0) {
 	  wl_resource_post_error(resource,
 		  PHOSH_PRIVATE_ERROR_INVALID_ARGUMENT,
