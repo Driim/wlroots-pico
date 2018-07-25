@@ -7,25 +7,29 @@
 #include <wlr/types/wlr_box.h>
 #include <wlr/types/wlr_compositor.h>
 #include <wlr/types/wlr_cursor.h>
+#include <wlr/types/wlr_export_dmabuf_v1.h>
 #include <wlr/types/wlr_gamma_control.h>
-#include <wlr/types/wlr_idle.h>
 #include <wlr/types/wlr_idle_inhibit_v1.h>
+#include <wlr/types/wlr_idle.h>
 #include <wlr/types/wlr_input_inhibitor.h>
 #include <wlr/types/wlr_layer_shell.h>
-#include <wlr/types/wlr_linux_dmabuf.h>
+#include <wlr/types/wlr_linux_dmabuf_v1.h>
 #include <wlr/types/wlr_output_layout.h>
 #include <wlr/types/wlr_primary_selection.h>
 #include <wlr/types/wlr_server_decoration.h>
 #include <wlr/types/wlr_wl_shell.h>
 #include <wlr/types/wlr_xcursor_manager.h>
+#include <wlr/types/wlr_xdg_output.h>
 #include <wlr/types/wlr_xdg_shell_v6.h>
 #include <wlr/types/wlr_xdg_shell.h>
 #include <wlr/types/wlr_xdg_output.h>
+#include <wlr/types/wlr_tablet_v2.h>
 #include <wlr/util/log.h>
 #include "rootston/layers.h"
 #include "rootston/seat.h"
 #include "rootston/server.h"
 #include "rootston/view.h"
+#include "rootston/virtual_keyboard.h"
 #include "rootston/xcursor.h"
 #include "wlr-layer-shell-unstable-v1-protocol.h"
 
@@ -67,8 +71,8 @@ enum roots_deco_part view_get_deco_part(struct roots_view *view, double sx,
 		return ROOTS_DECO_PART_NONE;
 	}
 
-	int sw = view->wlr_surface->current->width;
-	int sh = view->wlr_surface->current->height;
+	int sw = view->wlr_surface->current.width;
+	int sh = view->wlr_surface->current.height;
 	int bw = view->border_width;
 	int titlebar_h = view->titlebar_height;
 
@@ -326,13 +330,7 @@ bool view_center(struct roots_view *view) {
 
 	struct roots_desktop *desktop = view->desktop;
 	struct roots_input *input = desktop->server->input;
-	struct roots_seat *seat = NULL, *_seat;
-	wl_list_for_each(_seat, &input->seats, link) {
-		if (!seat || (seat->seat->last_event.tv_sec > _seat->seat->last_event.tv_sec &&
-				seat->seat->last_event.tv_nsec > _seat->seat->last_event.tv_nsec)) {
-			seat = _seat;
-		}
-	}
+	struct roots_seat *seat = input_last_active_seat(input);
 	if (!seat) {
 		return false;
 	}
@@ -459,7 +457,7 @@ void view_map(struct roots_view *view, struct wlr_surface *surface) {
 	view->wlr_surface = surface;
 
 	struct wlr_subsurface *subsurface;
-	wl_list_for_each(subsurface, &view->wlr_surface->subsurface_list,
+	wl_list_for_each(subsurface, &view->wlr_surface->subsurfaces,
 			parent_link) {
 		subsurface_create(view, subsurface);
 	}
@@ -562,7 +560,7 @@ static bool view_at(struct roots_view *view, double lx, double ly,
 	double view_sx = lx - view->x;
 	double view_sy = ly - view->y;
 
-	struct wlr_surface_state *state = view->wlr_surface->current;
+	struct wlr_surface_state *state = &view->wlr_surface->current;
 	struct wlr_box box = {
 		.x = 0, .y = 0,
 		.width = state->width, .height = state->height,
@@ -647,17 +645,17 @@ static struct wlr_surface *layer_surface_at(struct roots_output *output,
 		struct wl_list *layer, double ox, double oy, double *sx, double *sy) {
 	struct roots_layer_surface *roots_surface;
 	wl_list_for_each_reverse(roots_surface, layer, link) {
-		struct wlr_surface *wlr_surface =
-			roots_surface->layer_surface->surface;
 		double _sx = ox - roots_surface->geo.x;
 		double _sy = oy - roots_surface->geo.y;
-		// TODO: Test popups/subsurfaces
-		if (wlr_surface_point_accepts_input(wlr_surface, _sx, _sy)) {
-			*sx = _sx;
-			*sy = _sy;
-			return wlr_surface;
+
+		struct wlr_surface *sub = wlr_layer_surface_surface_at(
+			roots_surface->layer_surface, _sx, _sy, sx, sy);
+
+		if (sub) {
+			return sub;
 		}
 	}
+
 	return NULL;
 }
 
@@ -761,7 +759,7 @@ static void input_inhibit_deactivate(struct wl_listener *listener, void *data) {
 
 struct roots_desktop *desktop_create(struct roots_server *server,
 		struct roots_config *config) {
-	wlr_log(L_DEBUG, "Initializing roots desktop");
+	wlr_log(WLR_DEBUG, "Initializing roots desktop");
 
 	struct roots_desktop *desktop = calloc(1, sizeof(struct roots_desktop));
 	if (desktop == NULL) {
@@ -805,6 +803,8 @@ struct roots_desktop *desktop_create(struct roots_server *server,
 		&desktop->layer_shell_surface);
 	desktop->layer_shell_surface.notify = handle_layer_shell_surface;
 
+	desktop->tablet_v2 = wlr_tablet_v2_create(server->wl_display);
+
 #ifdef WLR_HAS_XWAYLAND
 	const char *cursor_theme = NULL;
 	const char *cursor_default = ROOTS_XCURSOR_DEFAULT;
@@ -820,7 +820,7 @@ struct roots_desktop *desktop_create(struct roots_server *server,
 	desktop->xcursor_manager = wlr_xcursor_manager_create(cursor_theme,
 		ROOTS_XCURSOR_SIZE);
 	if (desktop->xcursor_manager == NULL) {
-		wlr_log(L_ERROR, "Cannot create XCursor manager for theme %s",
+		wlr_log(WLR_ERROR, "Cannot create XCursor manager for theme %s",
 			cursor_theme);
 		free(desktop);
 		return NULL;
@@ -828,13 +828,13 @@ struct roots_desktop *desktop_create(struct roots_server *server,
 
 	if (config->xwayland) {
 		desktop->xwayland = wlr_xwayland_create(server->wl_display,
-			desktop->compositor);
+			desktop->compositor, config->xwayland_lazy);
 		wl_signal_add(&desktop->xwayland->events.new_surface,
 			&desktop->xwayland_surface);
 		desktop->xwayland_surface.notify = handle_xwayland_surface;
 
 		if (wlr_xcursor_manager_load(desktop->xcursor_manager, 1)) {
-			wlr_log(L_ERROR, "Cannot load XWayland XCursor theme");
+			wlr_log(WLR_ERROR, "Cannot load XWayland XCursor theme");
 		}
 		struct wlr_xcursor *xcursor = wlr_xcursor_manager_get_xcursor(
 			desktop->xcursor_manager, cursor_default, 1);
@@ -850,6 +850,8 @@ struct roots_desktop *desktop_create(struct roots_server *server,
 	desktop->gamma_control_manager = wlr_gamma_control_manager_create(
 		server->wl_display);
 	desktop->screenshooter = wlr_screenshooter_create(server->wl_display);
+	desktop->export_dmabuf_manager_v1 =
+		wlr_export_dmabuf_manager_v1_create(server->wl_display);
 	desktop->server_decoration_manager =
 		wlr_server_decoration_manager_create(server->wl_display);
 	wlr_server_decoration_manager_set_default_mode(
@@ -869,10 +871,17 @@ struct roots_desktop *desktop_create(struct roots_server *server,
 	wl_signal_add(&desktop->input_inhibit->events.deactivate,
 			&desktop->input_inhibit_deactivate);
 
-	desktop->linux_dmabuf = wlr_linux_dmabuf_create(server->wl_display,
+	desktop->linux_dmabuf = wlr_linux_dmabuf_v1_create(server->wl_display,
 		server->renderer);
 
 	desktop->phosh = phosh_create(desktop, server->wl_display);
+	desktop->virtual_keyboard = wlr_virtual_keyboard_manager_v1_create(
+		server->wl_display);
+	wl_signal_add(&desktop->virtual_keyboard->events.new_virtual_keyboard,
+		&desktop->virtual_keyboard_new);
+	desktop->virtual_keyboard_new.notify = handle_virtual_keyboard;
+
+	desktop->screencopy = wlr_screencopy_manager_v1_create(server->wl_display);
 
 	return desktop;
 }

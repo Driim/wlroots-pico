@@ -8,7 +8,7 @@
 struct wlr_pointer_impl;
 
 struct wlr_pointer {
-	struct wlr_pointer_impl *impl;
+	const struct wlr_pointer_impl *impl;
 
 	struct {
 		struct wl_signal motion;
@@ -58,6 +58,7 @@ struct wlr_event_pointer_axis {
 	enum wlr_axis_source source;
 	enum wlr_axis_orientation orientation;
 	double delta;
+	int32_t delta_discrete;
 };
 
 #endif

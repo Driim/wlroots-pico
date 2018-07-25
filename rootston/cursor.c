@@ -200,8 +200,8 @@ static void roots_cursor_update_position(
 	case ROOTS_CURSOR_ROTATE:
 		view = roots_seat_get_focus(seat);
 		if (view != NULL) {
-			int ox = view->x + view->wlr_surface->current->width/2,
-				oy = view->y + view->wlr_surface->current->height/2;
+			int ox = view->x + view->wlr_surface->current.width/2,
+				oy = view->y + view->wlr_surface->current.height/2;
 			int ux = cursor->offs_x - ox,
 				uy = cursor->offs_y - oy;
 			int vx = cursor->cursor->x - ox,
@@ -239,12 +239,12 @@ static void roots_cursor_press_button(struct roots_cursor *cursor,
 			break;
 		case BTN_RIGHT:
 			edges = 0;
-			if (sx < view->wlr_surface->current->width/2) {
+			if (sx < view->wlr_surface->current.width/2) {
 				edges |= WLR_EDGE_LEFT;
 			} else {
 				edges |= WLR_EDGE_RIGHT;
 			}
-			if (sy < view->wlr_surface->current->height/2) {
+			if (sy < view->wlr_surface->current.height/2) {
 				edges |= WLR_EDGE_TOP;
 			} else {
 				edges |= WLR_EDGE_BOTTOM;
@@ -273,7 +273,9 @@ static void roots_cursor_press_button(struct roots_cursor *cursor,
 			}
 			break;
 		case WLR_BUTTON_PRESSED:
-			roots_seat_set_focus(seat, view);
+			if (view) {
+				roots_seat_set_focus(seat, view);
+			}
 			if (surface && wlr_surface_is_layer_surface(surface)) {
 				struct wlr_layer_surface *layer =
 					wlr_layer_surface_from_wlr_surface(surface);
@@ -313,18 +315,16 @@ void roots_cursor_handle_button(struct roots_cursor *cursor,
 void roots_cursor_handle_axis(struct roots_cursor *cursor,
 		struct wlr_event_pointer_axis *event) {
 	wlr_seat_pointer_notify_axis(cursor->seat->seat, event->time_msec,
-		event->orientation, event->delta);
+		event->orientation, event->delta, event->delta_discrete, event->source);
 }
 
 void roots_cursor_handle_touch_down(struct roots_cursor *cursor,
 		struct wlr_event_touch_down *event) {
 	struct roots_desktop *desktop = cursor->seat->input->server->desktop;
 	double lx, ly;
-	bool result = wlr_cursor_absolute_to_layout_coords(cursor->cursor,
-			event->device, event->x, event->y, &lx, &ly);
-	if (!result) {
-		return;
-	}
+	wlr_cursor_absolute_to_layout_coords(cursor->cursor, event->device,
+		event->x, event->y, &lx, &ly);
+
 	double sx, sy;
 	struct wlr_surface *surface = desktop_surface_at(
 			desktop, lx, ly, &sx, &sy, NULL);
@@ -371,11 +371,8 @@ void roots_cursor_handle_touch_motion(struct roots_cursor *cursor,
 	}
 
 	double lx, ly;
-	bool result = wlr_cursor_absolute_to_layout_coords(cursor->cursor,
-			event->device, event->x, event->y, &lx, &ly);
-	if (!result) {
-		return;
-	}
+	wlr_cursor_absolute_to_layout_coords(cursor->cursor, event->device,
+		event->x, event->y, &lx, &ly);
 
 	double sx, sy;
 	struct wlr_surface *surface = desktop_surface_at(
@@ -432,7 +429,7 @@ void roots_cursor_handle_request_set_cursor(struct roots_cursor *cursor,
 	}
 	if (event->seat_client->client != focused_client ||
 			cursor->mode != ROOTS_CURSOR_PASSTHROUGH) {
-		wlr_log(L_DEBUG, "Denying request to set cursor from unfocused client");
+		wlr_log(WLR_DEBUG, "Denying request to set cursor from unfocused client");
 		return;
 	}
 

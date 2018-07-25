@@ -255,7 +255,8 @@ static void unmap(struct wlr_layer_surface *layer_surface) {
 	struct wlr_output *wlr_output = layer_surface->output;
 	if (wlr_output != NULL) {
 		struct roots_output *output = wlr_output->data;
-		wlr_output_damage_add_box(output->damage, &layer->geo);
+		output_damage_whole_local_surface(output, layer_surface->surface,
+			layer->geo.x, layer->geo.y, 0);
 	}
 }
 
@@ -282,7 +283,8 @@ static void handle_map(struct wl_listener *listener, void *data) {
 	struct roots_layer_surface *layer = layer_surface->data;
 	struct wlr_output *wlr_output = layer_surface->output;
 	struct roots_output *output = wlr_output->data;
-	wlr_output_damage_add_box(output->damage, &layer->geo);
+	output_damage_whole_local_surface(output, layer_surface->surface,
+		layer->geo.x, layer->geo.y, 0);
 	wlr_surface_send_enter(layer_surface->surface, wlr_output);
 }
 
@@ -292,11 +294,84 @@ static void handle_unmap(struct wl_listener *listener, void *data) {
 	unmap(layer->layer_surface);
 }
 
+static void popup_handle_map(struct wl_listener *listener, void *data) {
+	struct roots_layer_popup *popup = wl_container_of(listener, popup, map);
+	struct roots_layer_surface *layer = popup->parent;
+	struct wlr_output *wlr_output = layer->layer_surface->output;
+	struct roots_output *output = wlr_output->data;
+	int ox = popup->wlr_popup->geometry.x + layer->geo.x;
+	int oy = popup->wlr_popup->geometry.y + layer->geo.y;
+	output_damage_whole_local_surface(output, popup->wlr_popup->base->surface,
+		ox, oy, 0);
+}
+
+static void popup_handle_unmap(struct wl_listener *listener, void *data) {
+	struct roots_layer_popup *popup = wl_container_of(listener, popup, unmap);
+	struct roots_layer_surface *layer = popup->parent;
+	struct wlr_output *wlr_output = layer->layer_surface->output;
+	struct roots_output *output = wlr_output->data;
+	int ox = popup->wlr_popup->geometry.x + layer->geo.x;
+	int oy = popup->wlr_popup->geometry.y + layer->geo.y;
+	output_damage_whole_local_surface(output, popup->wlr_popup->base->surface,
+		ox, oy, 0);
+}
+
+static void popup_handle_commit(struct wl_listener *listener, void *data) {
+	struct roots_layer_popup *popup = wl_container_of(listener, popup, commit);
+	struct roots_layer_surface *layer = popup->parent;
+	struct wlr_output *wlr_output = layer->layer_surface->output;
+	struct roots_output *output = wlr_output->data;
+	int ox = popup->wlr_popup->geometry.x + layer->geo.x;
+	int oy = popup->wlr_popup->geometry.y + layer->geo.y;
+	output_damage_from_local_surface(output, popup->wlr_popup->base->surface,
+		ox, oy, 0);
+}
+
+static void popup_handle_destroy(struct wl_listener *listener, void *data) {
+	struct roots_layer_popup *popup =
+		wl_container_of(listener, popup, destroy);
+
+	wl_list_remove(&popup->map.link);
+	wl_list_remove(&popup->unmap.link);
+	wl_list_remove(&popup->destroy.link);
+	wl_list_remove(&popup->commit.link);
+	free(popup);
+}
+
+static struct roots_layer_popup *popup_create(struct roots_layer_surface *parent,
+		struct wlr_xdg_popup *wlr_popup) {
+	struct roots_layer_popup *popup =
+		calloc(1, sizeof(struct roots_layer_popup));
+	if (popup == NULL) {
+		return NULL;
+	}
+	popup->wlr_popup = wlr_popup;
+	popup->parent = parent;
+	popup->map.notify = popup_handle_map;
+	wl_signal_add(&wlr_popup->base->events.map, &popup->map);
+	popup->unmap.notify = popup_handle_unmap;
+	wl_signal_add(&wlr_popup->base->events.unmap, &popup->unmap);
+	popup->destroy.notify = popup_handle_destroy;
+	wl_signal_add(&wlr_popup->base->events.destroy, &popup->destroy);
+	popup->commit.notify = popup_handle_commit;
+	wl_signal_add(&wlr_popup->base->surface->events.commit, &popup->commit);
+	/* TODO: popups can have popups, see xdg_shell::popup_create */
+
+	return popup;
+}
+
+static void handle_new_popup(struct wl_listener *listener, void *data) {
+	struct roots_layer_surface *roots_layer_surface =
+		wl_container_of(listener, roots_layer_surface, new_popup);
+	struct wlr_xdg_popup *wlr_popup = data;
+	popup_create(roots_layer_surface, wlr_popup);
+}
+
 void handle_layer_shell_surface(struct wl_listener *listener, void *data) {
 	struct wlr_layer_surface *layer_surface = data;
 	struct roots_desktop *desktop =
 		wl_container_of(listener, desktop, layer_shell_surface);
-	wlr_log(L_DEBUG, "new layer surface: namespace %s layer %d anchor %d "
+	wlr_log(WLR_DEBUG, "new layer surface: namespace %s layer %d anchor %d "
 			"size %dx%d margin %d,%d,%d,%d",
 		layer_surface->namespace, layer_surface->layer, layer_surface->layer,
 		layer_surface->client_pending.desired_width,
@@ -305,6 +380,28 @@ void handle_layer_shell_surface(struct wl_listener *listener, void *data) {
 		layer_surface->client_pending.margin.right,
 		layer_surface->client_pending.margin.bottom,
 		layer_surface->client_pending.margin.left);
+
+	if (!layer_surface->output) {
+		struct roots_input *input = desktop->server->input;
+		struct roots_seat *seat = input_last_active_seat(input);
+		assert(seat); // Technically speaking we should handle this case
+		struct wlr_output *output =
+			wlr_output_layout_output_at(desktop->layout,
+					seat->cursor->cursor->x,
+					seat->cursor->cursor->y);
+		if (!output) {
+			wlr_log(WLR_ERROR, "Couldn't find output at (%.0f,%.0f)",
+				seat->cursor->cursor->x,
+				seat->cursor->cursor->y);
+			output = wlr_output_layout_get_center_output(desktop->layout);
+		}
+		if (output) {
+			layer_surface->output = output;
+		} else {
+			wlr_layer_surface_close(layer_surface);
+			return;
+		}
+	}
 
 	struct roots_layer_surface *roots_surface =
 		calloc(1, sizeof(struct roots_layer_surface));
@@ -326,6 +423,8 @@ void handle_layer_shell_surface(struct wl_listener *listener, void *data) {
 	wl_signal_add(&layer_surface->events.map, &roots_surface->map);
 	roots_surface->unmap.notify = handle_unmap;
 	wl_signal_add(&layer_surface->events.unmap, &roots_surface->unmap);
+	roots_surface->new_popup.notify = handle_new_popup;
+	wl_signal_add(&layer_surface->events.new_popup, &roots_surface->new_popup);
 	// TODO: Listen for subsurfaces
 
 	roots_surface->layer_surface = layer_surface;

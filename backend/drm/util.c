@@ -174,7 +174,7 @@ uint32_t get_fb_for_bo(struct gbm_bo *bo) {
 	uint32_t format = gbm_bo_get_format(bo);
 
 	if (drmModeAddFB2(fd, width, height, format, handles, pitches, offsets, &id, 0)) {
-		wlr_log_errno(L_ERROR, "Unable to add DRM framebuffer");
+		wlr_log_errno(WLR_ERROR, "Unable to add DRM framebuffer");
 	}
 
 	gbm_bo_set_user_data(bo, (void *)(uintptr_t)id, free_fb);
@@ -266,7 +266,7 @@ static bool match_obj_(struct match_state *st, size_t skips, size_t score, size_
 			continue;
 		}
 
-		// Not compatable
+		// Not compatible
 		if (!(st->objs[st->res[i]] & (1 << i))) {
 			continue;
 		}

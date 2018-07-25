@@ -27,11 +27,11 @@ static int xwm_data_source_write(int fd, uint32_t mask, void *data) {
 		xwm_selection_transfer_destroy_property_reply(transfer);
 		xwm_selection_transfer_remove_source(transfer);
 		xwm_selection_transfer_close_source_fd(transfer);
-		wlr_log(L_ERROR, "write error to target fd: %m");
+		wlr_log(WLR_ERROR, "write error to target fd: %m");
 		return 1;
 	}
 
-	wlr_log(L_DEBUG, "wrote %ld (chunk size %ld) of %d bytes",
+	wlr_log(WLR_DEBUG, "wrote %zd (chunk size %zd) of %d bytes",
 		transfer->property_start + len,
 		len, xcb_get_property_value_length(transfer->property_reply));
 
@@ -41,12 +41,12 @@ static int xwm_data_source_write(int fd, uint32_t mask, void *data) {
 		xwm_selection_transfer_remove_source(transfer);
 
 		if (transfer->incr) {
-			wlr_log(L_DEBUG, "deleting property");
+			wlr_log(WLR_DEBUG, "deleting property");
 			xcb_delete_property(xwm->xcb_conn, transfer->selection->window,
 				xwm->atoms[WL_SELECTION]);
 			xcb_flush(xwm->xcb_conn);
 		} else {
-			wlr_log(L_DEBUG, "transfer complete");
+			wlr_log(WLR_DEBUG, "transfer complete");
 			xwm_selection_transfer_close_source_fd(transfer);
 		}
 	}
@@ -74,7 +74,7 @@ static void xwm_write_property(struct wlr_xwm_selection_transfer *transfer,
 
 void xwm_get_incr_chunk(struct wlr_xwm_selection_transfer *transfer) {
 	struct wlr_xwm *xwm = transfer->selection->xwm;
-	wlr_log(L_DEBUG, "xwm_get_incr_chunk");
+	wlr_log(WLR_DEBUG, "xwm_get_incr_chunk");
 
 	xcb_get_property_cookie_t cookie = xcb_get_property(xwm->xcb_conn,
 		0, // delete
@@ -88,7 +88,7 @@ void xwm_get_incr_chunk(struct wlr_xwm_selection_transfer *transfer) {
 	xcb_get_property_reply_t *reply =
 		xcb_get_property_reply(xwm->xcb_conn, cookie, NULL);
 	if (reply == NULL) {
-		wlr_log(L_ERROR, "cannot get selection property");
+		wlr_log(WLR_ERROR, "cannot get selection property");
 		return;
 	}
 	//dump_property(xwm, xwm->atoms[WL_SELECTION], reply);
@@ -98,7 +98,7 @@ void xwm_get_incr_chunk(struct wlr_xwm_selection_transfer *transfer) {
 		 * for freeing it */
 		xwm_write_property(transfer, reply);
 	} else {
-		wlr_log(L_DEBUG, "transfer complete");
+		wlr_log(WLR_DEBUG, "transfer complete");
 		xwm_selection_transfer_close_source_fd(transfer);
 		free(reply);
 	}
@@ -119,7 +119,7 @@ static void xwm_selection_get_data(struct wlr_xwm_selection *selection) {
 	xcb_get_property_reply_t *reply =
 		xcb_get_property_reply(xwm->xcb_conn, cookie, NULL);
 	if (reply == NULL) {
-		wlr_log(L_ERROR, "Cannot get selection property");
+		wlr_log(WLR_ERROR, "Cannot get selection property");
 		return;
 	}
 
@@ -156,7 +156,7 @@ static void source_send(struct wlr_xwm_selection *selection,
 		++i;
 	}
 	if (!found) {
-		wlr_log(L_DEBUG, "Cannot send X11 selection to Wayland: "
+		wlr_log(WLR_DEBUG, "Cannot send X11 selection to Wayland: "
 			"unsupported MIME type");
 		return;
 	}
@@ -182,14 +182,14 @@ struct x11_data_source {
 
 static const struct wlr_data_source_impl data_source_impl;
 
-bool wlr_data_source_is_xwayland_data_source(
+bool data_source_is_xwayland(
 		struct wlr_data_source *wlr_source) {
 	return wlr_source->impl == &data_source_impl;
 }
 
 static struct x11_data_source *data_source_from_wlr_data_source(
 		struct wlr_data_source *wlr_source) {
-	assert(wlr_data_source_is_xwayland_data_source(wlr_source));
+	assert(data_source_is_xwayland(wlr_source));
 	return (struct x11_data_source *)wlr_source;
 }
 
@@ -225,7 +225,7 @@ struct x11_primary_selection_source {
 static void primary_selection_source_cancel(
 	struct wlr_primary_selection_source *wlr_source);
 
-bool wlr_primary_selection_source_is_xwayland_primary_selection_source(
+bool primary_selection_source_is_xwayland(
 		struct wlr_primary_selection_source *wlr_source) {
 	return wlr_source->cancel == primary_selection_source_cancel;
 }
@@ -309,6 +309,7 @@ static bool source_get_targets(struct wlr_xwm_selection *selection,
 			char **mime_type_ptr =
 				wl_array_add(mime_types, sizeof(*mime_type_ptr));
 			if (mime_type_ptr == NULL) {
+				free(mime_type);
 				break;
 			}
 			*mime_type_ptr = mime_type;
@@ -377,7 +378,7 @@ static void xwm_selection_get_targets(struct wlr_xwm_selection *selection) {
 
 void xwm_handle_selection_notify(struct wlr_xwm *xwm,
 		xcb_selection_notify_event_t *event) {
-	wlr_log(L_DEBUG, "XCB_SELECTION_NOTIFY (selection=%u, property=%u, target=%u)",
+	wlr_log(WLR_DEBUG, "XCB_SELECTION_NOTIFY (selection=%u, property=%u, target=%u)",
 		event->selection, event->property,
 		event->target);
 
@@ -388,11 +389,11 @@ void xwm_handle_selection_notify(struct wlr_xwm *xwm,
 	}
 
 	if (event->property == XCB_ATOM_NONE) {
-		wlr_log(L_ERROR, "convert selection failed");
+		wlr_log(WLR_ERROR, "convert selection failed");
 	} else if (event->target == xwm->atoms[TARGETS]) {
 		// No xwayland surface focused, deny access to clipboard
 		if (xwm->focus_surface == NULL) {
-			wlr_log(L_DEBUG, "denying write access to clipboard: "
+			wlr_log(WLR_DEBUG, "denying write access to clipboard: "
 				"no xwayland surface focused");
 			return;
 		}
@@ -406,7 +407,7 @@ void xwm_handle_selection_notify(struct wlr_xwm *xwm,
 
 int xwm_handle_xfixes_selection_notify(struct wlr_xwm *xwm,
 		xcb_xfixes_selection_notify_event_t *event) {
-	wlr_log(L_DEBUG, "XCB_XFIXES_SELECTION_NOTIFY (selection=%u, owner=%u)",
+	wlr_log(WLR_DEBUG, "XCB_XFIXES_SELECTION_NOTIFY (selection=%u, owner=%u)",
 		event->selection, event->owner);
 
 	struct wlr_xwm_selection *selection =
@@ -428,7 +429,7 @@ int xwm_handle_xfixes_selection_notify(struct wlr_xwm *xwm,
 			} else if (selection == &xwm->dnd_selection) {
 				// TODO: DND
 			} else {
-				wlr_log(L_DEBUG, "X11 selection has been cleared, but cannot "
+				wlr_log(WLR_DEBUG, "X11 selection has been cleared, but cannot "
 					"clear Wayland selection");
 			}
 		}

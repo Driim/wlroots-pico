@@ -32,31 +32,18 @@ static void x11_handle_pointer_position(struct wlr_x11_output *output,
 		int16_t x, int16_t y, xcb_timestamp_t time) {
 	struct wlr_x11_backend *x11 = output->x11;
 	struct wlr_output *wlr_output = &output->wlr_output;
-
-	struct wlr_box box = { .x = x, .y = y };
-	wlr_box_transform(&box, wlr_output->transform, wlr_output->width,
-		wlr_output->height, &box);
-	box.x /= wlr_output->scale;
-	box.y /= wlr_output->scale;
-
-	struct wlr_box layout_box;
-	x11_output_layout_get_box(x11, &layout_box);
-
-	double ox = wlr_output->lx / (double)layout_box.width;
-	double oy = wlr_output->ly / (double)layout_box.height;
-
-	struct wlr_event_pointer_motion_absolute wlr_event = {
-		.device = &x11->pointer_dev,
+	struct wlr_event_pointer_motion_absolute event = {
+		.device = &output->pointer_dev,
 		.time_msec = time,
-		.x = box.x / (double)layout_box.width + ox,
-		.y = box.y / (double)layout_box.height + oy,
+		.x = (double)x / wlr_output->width,
+		.y = (double)y / wlr_output->height,
 	};
-	wlr_signal_emit_safe(&x11->pointer.events.motion_absolute, &wlr_event);
+	wlr_signal_emit_safe(&output->pointer.events.motion_absolute, &event);
 
 	x11->time = time;
 }
 
-void x11_handle_input_event(struct wlr_x11_backend *x11,
+void handle_x11_input_event(struct wlr_x11_backend *x11,
 		xcb_generic_event_t *event) {
 	switch (event->response_type & XCB_EVENT_RESPONSE_TYPE_MASK) {
 	case XCB_KEY_PRESS:
@@ -78,17 +65,25 @@ void x11_handle_input_event(struct wlr_x11_backend *x11,
 	case XCB_BUTTON_PRESS: {
 		xcb_button_press_event_t *ev = (xcb_button_press_event_t *)event;
 
+		struct wlr_x11_output *output =
+			get_x11_output_from_window_id(x11, ev->event);
+		if (output == NULL) {
+			break;
+		}
+
 		if (ev->detail == XCB_BUTTON_INDEX_4 ||
 				ev->detail == XCB_BUTTON_INDEX_5) {
-			double delta = (ev->detail == XCB_BUTTON_INDEX_4 ? -15 : 15);
+			int32_t delta_discrete = ev->detail == XCB_BUTTON_INDEX_4 ? -1 : 1;
 			struct wlr_event_pointer_axis axis = {
-				.device = &x11->pointer_dev,
+				.device = &output->pointer_dev,
 				.time_msec = ev->time,
 				.source = WLR_AXIS_SOURCE_WHEEL,
 				.orientation = WLR_AXIS_ORIENTATION_VERTICAL,
-				.delta = delta,
+				// 15 is a typical value libinput sends for one scroll
+				.delta = delta_discrete * 15,
+				.delta_discrete = delta_discrete,
 			};
-			wlr_signal_emit_safe(&x11->pointer.events.axis, &axis);
+			wlr_signal_emit_safe(&output->pointer.events.axis, &axis);
 			x11->time = ev->time;
 			break;
 		}
@@ -97,17 +92,23 @@ void x11_handle_input_event(struct wlr_x11_backend *x11,
 	case XCB_BUTTON_RELEASE: {
 		xcb_button_press_event_t *ev = (xcb_button_press_event_t *)event;
 
+		struct wlr_x11_output *output =
+			get_x11_output_from_window_id(x11, ev->event);
+		if (output == NULL) {
+			break;
+		}
+
 		if (ev->detail != XCB_BUTTON_INDEX_4 &&
 				ev->detail != XCB_BUTTON_INDEX_5) {
 			struct wlr_event_pointer_button button = {
-				.device = &x11->pointer_dev,
+				.device = &output->pointer_dev,
 				.time_msec = ev->time,
 				.button = xcb_button_to_wl(ev->detail),
 				.state = event->response_type == XCB_BUTTON_PRESS ?
 					WLR_BUTTON_PRESSED : WLR_BUTTON_RELEASED,
 			};
 
-			wlr_signal_emit_safe(&x11->pointer.events.button, &button);
+			wlr_signal_emit_safe(&output->pointer.events.button, &button);
 		}
 		x11->time = ev->time;
 		return;
@@ -116,7 +117,7 @@ void x11_handle_input_event(struct wlr_x11_backend *x11,
 		xcb_motion_notify_event_t *ev = (xcb_motion_notify_event_t *)event;
 
 		struct wlr_x11_output *output =
-			x11_output_from_window_id(x11, ev->event);
+			get_x11_output_from_window_id(x11, ev->event);
 		if (output != NULL) {
 			x11_handle_pointer_position(output, ev->event_x, ev->event_y, ev->time);
 		}
@@ -136,9 +137,31 @@ void x11_handle_input_event(struct wlr_x11_backend *x11,
 	}
 }
 
-const struct wlr_input_device_impl input_device_impl = { 0 };
+static void input_device_destroy(struct wlr_input_device *wlr_device) {
+	// Don't free the input device, it's on the stack
+}
 
-void x11_update_pointer_position(struct wlr_x11_output *output,
+const struct wlr_input_device_impl input_device_impl = {
+	.destroy = input_device_destroy,
+};
+
+static void keyboard_destroy(struct wlr_keyboard *wlr_keyboard) {
+	// Don't free the keyboard, it's on the stack
+}
+
+const struct wlr_keyboard_impl keyboard_impl = {
+	.destroy = keyboard_destroy,
+};
+
+static void pointer_destroy(struct wlr_pointer *wlr_pointer) {
+	// Don't free the pointer, it's on the stack
+}
+
+const struct wlr_pointer_impl pointer_impl = {
+	.destroy = pointer_destroy,
+};
+
+void update_x11_pointer_position(struct wlr_x11_output *output,
 		xcb_timestamp_t time) {
 	struct wlr_x11_backend *x11 = output->x11;
 

@@ -16,7 +16,8 @@
  * to NULL for the default behaviour (WAYLAND_DISPLAY env variable or wayland-0
  * default)
  */
-struct wlr_backend *wlr_wl_backend_create(struct wl_display *display, const char *remote);
+struct wlr_backend *wlr_wl_backend_create(struct wl_display *display, const char *remote,
+	wlr_renderer_create_func_t create_renderer_func);
 
 /**
  * Adds a new output to this backend. You may remove outputs by destroying them.
@@ -37,7 +38,7 @@ bool wlr_backend_is_wl(struct wlr_backend *backend);
 bool wlr_input_device_is_wl(struct wlr_input_device *device);
 
 /**
- * True if the given output is a wlr_wl_backend_output.
+ * True if the given output is a wlr_wl_output.
  */
 bool wlr_output_is_wl(struct wlr_output *output);
 

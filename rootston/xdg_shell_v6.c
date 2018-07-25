@@ -18,6 +18,8 @@ static void popup_destroy(struct roots_view_child *child) {
 	}
 	wl_list_remove(&popup->destroy.link);
 	wl_list_remove(&popup->new_popup.link);
+	wl_list_remove(&popup->map.link);
+	wl_list_remove(&popup->unmap.link);
 	view_child_finish(&popup->view_child);
 	free(popup);
 }
@@ -131,15 +133,10 @@ static void get_size(const struct roots_view *view, struct wlr_box *box) {
 	assert(view->type == ROOTS_XDG_SHELL_V6_VIEW);
 	struct wlr_xdg_surface_v6 *surface = view->xdg_surface_v6;
 
-	if (surface->geometry.width > 0 && surface->geometry.height > 0) {
-		box->width = surface->geometry.width;
-		box->height = surface->geometry.height;
-	} else if (view->wlr_surface != NULL) {
-		box->width = view->wlr_surface->current->width;
-		box->height = view->wlr_surface->current->height;
-	} else {
-		box->width = box->height = 0;
-	}
+	struct wlr_box geo_box;
+	wlr_xdg_surface_v6_get_geometry(surface, &geo_box);
+	box->width = geo_box.width;
+	box->height = geo_box.height;
 }
 
 static void activate(struct roots_view *view, bool active) {
@@ -402,14 +399,14 @@ void handle_xdg_shell_v6_surface(struct wl_listener *listener, void *data) {
 	assert(surface->role != WLR_XDG_SURFACE_V6_ROLE_NONE);
 
 	if (surface->role == WLR_XDG_SURFACE_V6_ROLE_POPUP) {
-		wlr_log(L_DEBUG, "new xdg popup");
+		wlr_log(WLR_DEBUG, "new xdg popup");
 		return;
 	}
 
 	struct roots_desktop *desktop =
 		wl_container_of(listener, desktop, xdg_shell_v6_surface);
 
-	wlr_log(L_DEBUG, "new xdg toplevel: title=%s, app_id=%s",
+	wlr_log(WLR_DEBUG, "new xdg toplevel: title=%s, app_id=%s",
 		surface->toplevel->title, surface->toplevel->app_id);
 	wlr_xdg_surface_v6_ping(surface);
 

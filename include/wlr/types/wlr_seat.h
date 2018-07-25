@@ -13,11 +13,11 @@
  * managed by wlr_seat; some may be NULL.
  */
 struct wlr_seat_client {
-	struct wl_resource *wl_resource;
 	struct wl_client *client;
 	struct wlr_seat *seat;
 
 	// lists of wl_resource
+	struct wl_list resources;
 	struct wl_list pointers;
 	struct wl_list keyboards;
 	struct wl_list touches;
@@ -42,7 +42,6 @@ struct wlr_touch_point {
 
 	struct wl_listener surface_destroy;
 	struct wl_listener focus_surface_destroy;
-	struct wl_listener resource_destroy;
 
 	struct {
 		struct wl_signal destroy;
@@ -61,7 +60,8 @@ struct wlr_pointer_grab_interface {
 	uint32_t (*button)(struct wlr_seat_pointer_grab *grab, uint32_t time,
 			uint32_t button, uint32_t state);
 	void (*axis)(struct wlr_seat_pointer_grab *grab, uint32_t time,
-			enum wlr_axis_orientation orientation, double value);
+			enum wlr_axis_orientation orientation, double value,
+			int32_t value_discrete, enum wlr_axis_source source);
 	void (*cancel)(struct wlr_seat_pointer_grab *grab);
 };
 
@@ -138,7 +138,6 @@ struct wlr_seat_pointer_state {
 	uint32_t grab_time;
 
 	struct wl_listener surface_destroy;
-	struct wl_listener resource_destroy;
 };
 
 // TODO: May be useful to be able to simulate keyboard input events
@@ -154,7 +153,6 @@ struct wlr_seat_keyboard_state {
 	struct wl_listener keyboard_repeat_info;
 
 	struct wl_listener surface_destroy;
-	struct wl_listener resource_destroy;
 
 	struct wlr_seat_keyboard_grab *grab;
 	struct wlr_seat_keyboard_grab *default_grab;
@@ -172,7 +170,7 @@ struct wlr_seat_touch_state {
 };
 
 struct wlr_seat {
-	struct wl_global *wl_global;
+	struct wl_global *global;
 	struct wl_display *display;
 	struct wl_list clients;
 	struct wl_list drag_icons; // wlr_drag_icon::link
@@ -303,7 +301,8 @@ uint32_t wlr_seat_pointer_send_button(struct wlr_seat *wlr_seat, uint32_t time,
  * grabs.
  **/
 void wlr_seat_pointer_send_axis(struct wlr_seat *wlr_seat, uint32_t time,
-		enum wlr_axis_orientation orientation, double value);
+		enum wlr_axis_orientation orientation, double value,
+		int32_t value_discrete, enum wlr_axis_source source);
 
 /**
  * Start a grab of the pointer of this seat. The grabber is responsible for
@@ -344,7 +343,8 @@ uint32_t wlr_seat_pointer_notify_button(struct wlr_seat *wlr_seat,
  * Notify the seat of an axis event.
  */
 void wlr_seat_pointer_notify_axis(struct wlr_seat *wlr_seat, uint32_t time,
-		enum wlr_axis_orientation orientation, double value);
+		enum wlr_axis_orientation orientation, double value,
+		int32_t value_discrete, enum wlr_axis_source source);
 
 /**
  * Whether or not the pointer has a grab other than the default grab.

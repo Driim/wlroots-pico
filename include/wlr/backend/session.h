@@ -25,8 +25,12 @@ struct wlr_session {
 	struct wl_signal session_signal;
 	bool active;
 
+	/*
+	 * 0 if virtual terminals are not supported
+	 * i.e. seat != "seat0"
+	 */
 	unsigned vtnr;
-	char seat[8];
+	char seat[256];
 
 	struct udev *udev;
 	struct udev_monitor *mon;
@@ -43,7 +47,7 @@ struct wlr_session {
  * of the terminal (Xorg, another Wayland compositor, etc.).
  *
  * If logind support is not enabled, you must have CAP_SYS_ADMIN or be root.
- * It is safe to drop priviledges after this is called.
+ * It is safe to drop privileges after this is called.
  *
  * Returns NULL on error.
  */

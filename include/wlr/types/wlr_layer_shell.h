@@ -20,13 +20,16 @@
  * the compositor should begin rendering the surface.
  */
 struct wlr_layer_shell {
-	struct wl_global *wl_global;
+	struct wl_global *global;
 	struct wl_list client_resources; // wl_resource
 	struct wl_list surfaces; // wl_layer_surface
 
 	struct wl_listener display_destroy;
 
 	struct {
+		 // struct wlr_layer_surface *
+		 // Note: the output may be NULL. In this case, it is your
+		 // responsibility to assign an output before returning.
 		struct wl_signal new_surface;
 	} events;
 
@@ -56,8 +59,9 @@ struct wlr_layer_surface {
 	struct wlr_output *output;
 	struct wl_resource *resource;
 	struct wlr_layer_shell *shell;
+	struct wl_list popups; // wlr_xdg_popup::link
 
-	const char *namespace;
+	char *namespace;
 	enum zwlr_layer_shell_v1_layer layer;
 
 	bool added, configured, mapped, closed;
@@ -72,12 +76,13 @@ struct wlr_layer_surface {
 	struct wlr_layer_surface_state server_pending;
 	struct wlr_layer_surface_state current;
 
-	struct wl_listener surface_destroy_listener;
+	struct wl_listener surface_destroy;
 
 	struct {
 		struct wl_signal destroy;
 		struct wl_signal map;
 		struct wl_signal unmap;
+		struct wl_signal new_popup;
 	} events;
 
 	void *data;
@@ -104,4 +109,16 @@ bool wlr_surface_is_layer_surface(struct wlr_surface *surface);
 struct wlr_layer_surface *wlr_layer_surface_from_wlr_surface(
 		struct wlr_surface *surface);
 
+/* Calls the iterator function for each sub-surface and popup of this surface */
+void wlr_layer_surface_for_each_surface(struct wlr_layer_surface *surface,
+		wlr_surface_iterator_func_t iterator, void *user_data);
+
+/**
+ * Find a surface within this layer-surface tree at the given surface-local
+ * coordinates. Returns the surface and coordinates in the leaf surface
+ * coordinate system or NULL if no surface is found at that location.
+ */
+struct wlr_surface *wlr_layer_surface_surface_at(
+		struct wlr_layer_surface *surface, double sx, double sy,
+		double *sub_x, double *sub_y);
 #endif

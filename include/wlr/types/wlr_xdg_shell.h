@@ -1,12 +1,12 @@
 #ifndef WLR_TYPES_WLR_XDG_SHELL_H
 #define WLR_TYPES_WLR_XDG_SHELL_H
-
 #include <wlr/types/wlr_box.h>
 #include <wlr/types/wlr_seat.h>
 #include <wayland-server.h>
+#include "xdg-shell-protocol.h"
 
 struct wlr_xdg_shell {
-	struct wl_global *wl_global;
+	struct wl_global *global;
 	struct wl_list clients;
 	struct wl_list popup_grabs;
 	uint32_t ping_timeout;
@@ -14,6 +14,12 @@ struct wlr_xdg_shell {
 	struct wl_listener display_destroy;
 
 	struct {
+		/**
+		 * The `new_surface` event signals that a client has requested to
+		 * create a new shell surface. At this point, the surface is ready to
+		 * be configured but is not mapped or ready receive input events. The
+		 * surface will be ready to be managed on the `map` event.
+		 */
 		struct wl_signal new_surface;
 	} events;
 
@@ -32,18 +38,37 @@ struct wlr_xdg_client {
 	struct wl_event_source *ping_timer;
 };
 
+struct wlr_xdg_positioner {
+	struct wl_resource *resource;
+
+	struct wlr_box anchor_rect;
+	enum xdg_positioner_anchor anchor;
+	enum xdg_positioner_gravity gravity;
+	enum xdg_positioner_constraint_adjustment constraint_adjustment;
+
+	struct {
+		int32_t width, height;
+	} size;
+
+	struct {
+		int32_t x, y;
+	} offset;
+};
+
 struct wlr_xdg_popup {
 	struct wlr_xdg_surface *base;
 	struct wl_list link;
 
 	struct wl_resource *resource;
 	bool committed;
-	struct wlr_xdg_surface *parent;
+	struct wlr_surface *parent;
 	struct wlr_seat *seat;
 
 	// Position of the popup relative to the upper left corner of the window
 	// geometry of the parent surface
 	struct wlr_box geometry;
+
+	struct wlr_xdg_positioner positioner;
 
 	struct wl_list grab_link; // wlr_xdg_popup_grab::popups
 };
@@ -67,6 +92,7 @@ enum wlr_xdg_surface_role {
 
 struct wlr_xdg_toplevel_state {
 	bool maximized, fullscreen, resizing, activated;
+	uint32_t tiled; // enum wlr_edges
 	uint32_t width, height;
 	uint32_t max_width, max_height;
 	uint32_t min_width, min_height;
@@ -92,6 +118,7 @@ struct wlr_xdg_toplevel {
 		struct wl_signal request_move;
 		struct wl_signal request_resize;
 		struct wl_signal request_show_window_menu;
+		struct wl_signal set_parent;
 	} events;
 };
 
@@ -109,7 +136,7 @@ struct wlr_xdg_surface_configure {
  *
  * When a surface has a role and is ready to be displayed, the `map` event is
  * emitted. When a surface should no longer be displayed, the `unmap` event is
- * emitted. The `unmap` event is guaranted to be emitted before the `destroy`
+ * emitted. The `unmap` event is guaranteed to be emitted before the `destroy`
  * event if the view is destroyed when mapped.
  */
 struct wlr_xdg_surface {
@@ -136,13 +163,28 @@ struct wlr_xdg_surface {
 	struct wlr_box next_geometry;
 	struct wlr_box geometry;
 
-	struct wl_listener surface_destroy_listener;
+	struct wl_listener surface_destroy;
+	struct wl_listener surface_commit;
 
 	struct {
 		struct wl_signal destroy;
 		struct wl_signal ping_timeout;
 		struct wl_signal new_popup;
+		/**
+		 * The `map` event signals that the shell surface is ready to be
+		 * managed by the compositor and rendered on the screen. At this point,
+		 * the surface has configured its properties, has had the opportunity
+		 * to bind to the seat to receive input events, and has a buffer that
+		 * is ready to be rendered. You can now safely add this surface to a
+		 * list of views.
+		 */
 		struct wl_signal map;
+		/**
+		 * The `unmap` event signals that the surface is no longer in a state
+		 * where it should be shown on the screen. This might happen if the
+		 * surface no longer has a displayable buffer because either the
+		 * surface has been hidden or is about to be destroyed.
+		 */
 		struct wl_signal unmap;
 	} events;
 
@@ -177,6 +219,14 @@ struct wlr_xdg_toplevel_show_window_menu_event {
 
 struct wlr_xdg_shell *wlr_xdg_shell_create(struct wl_display *display);
 void wlr_xdg_shell_destroy(struct wlr_xdg_shell *xdg_shell);
+
+struct wlr_xdg_surface *wlr_xdg_surface_from_resource(
+		struct wl_resource *resource);
+struct wlr_xdg_surface *wlr_xdg_surface_from_popup_resource(
+		struct wl_resource *resource);
+
+struct wlr_box wlr_xdg_positioner_get_geometry(
+		struct wlr_xdg_positioner *positioner);
 
 /**
  * Send a ping to the surface. If the surface does not respond in a reasonable
@@ -220,15 +270,64 @@ uint32_t wlr_xdg_toplevel_set_resizing(struct wlr_xdg_surface *surface,
 		bool resizing);
 
 /**
+ * Request that this toplevel surface consider itself in a tiled layout and some
+ * edges are adjacent to another part of the tiling grid. `tiled_edges` is a
+ * bitfield of `enum wlr_edges`. Returns the associated configure serial.
+ */
+uint32_t wlr_xdg_toplevel_set_tiled(struct wlr_xdg_surface *surface,
+		uint32_t tiled_edges);
+
+/**
  * Request that this xdg surface closes.
  */
 void wlr_xdg_surface_send_close(struct wlr_xdg_surface *surface);
 
 /**
  * Compute the popup position in its parent's surface-local coordinate system.
+ * This aborts if called for popups whose parent is not an xdg_surface.
  */
 void wlr_xdg_surface_popup_get_position(struct wlr_xdg_surface *surface,
 		double *popup_sx, double *popup_sy);
+
+/**
+ * Get the geometry for this positioner based on the anchor rect, gravity, and
+ * size of this positioner.
+ */
+struct wlr_box wlr_xdg_positioner_get_geometry(
+		struct wlr_xdg_positioner *positioner);
+
+/**
+ * Get the anchor point for this popup in the toplevel parent's coordinate system.
+ */
+void wlr_xdg_popup_get_anchor_point(struct wlr_xdg_popup *popup,
+		int *toplevel_sx, int *toplevel_sy);
+
+/**
+ * Convert the given coordinates in the popup coordinate system to the toplevel
+ * surface coordinate system.
+ */
+void wlr_xdg_popup_get_toplevel_coords(struct wlr_xdg_popup *popup,
+		int popup_sx, int popup_sy, int *toplevel_sx, int *toplevel_sy);
+
+/**
+ * Set the geometry of this popup to unconstrain it according to its
+ * xdg-positioner rules. The box should be in the popup's root toplevel parent
+ * surface coordinate system.
+ */
+void wlr_xdg_popup_unconstrain_from_box(struct wlr_xdg_popup *popup,
+		struct wlr_box *toplevel_sx_box);
+
+/**
+  Invert the right/left anchor and gravity for this positioner. This can be
+  used to "flip" the positioner around the anchor rect in the x direction.
+ */
+void wlr_positioner_invert_x(struct wlr_xdg_positioner *positioner);
+
+/**
+  Invert the top/bottom anchor and gravity for this positioner. This can be
+  used to "flip" the positioner around the anchor rect in the y direction.
+ */
+void wlr_positioner_invert_y(struct wlr_xdg_positioner *positioner);
 
 /**
  * Find a surface within this xdg-surface tree at the given surface-local
@@ -245,11 +344,28 @@ struct wlr_xdg_surface *wlr_xdg_surface_from_wlr_surface(
 		struct wlr_surface *surface);
 
 /**
- * Call `iterator` on each surface in the xdg-surface tree, with the surface's
- * positon relative to the root xdg-surface. The function is called from root to
- * leaves (in rendering order).
+ * Get the surface geometry.
+ * This is either the geometry as set by the client, or defaulted to the bounds
+ * of the surface + the subsurfaces (as specified by the protocol).
+ *
+ * The x and y value can be <0
+ */
+void wlr_xdg_surface_get_geometry(struct wlr_xdg_surface *surface, struct wlr_box *box);
+
+/**
+ * Call `iterator` on each surface and popup in the xdg-surface tree, with the
+ * surface's position relative to the root xdg-surface. The function is called
+ * from root to leaves (in rendering order).
  */
 void wlr_xdg_surface_for_each_surface(struct wlr_xdg_surface *surface,
+	wlr_surface_iterator_func_t iterator, void *user_data);
+
+/**
+ * Call `iterator` on each popup in the xdg-surface tree, with the popup's
+ * position relative to the root xdg-surface. The function is called from root
+ * to leaves (in rendering order).
+ */
+void wlr_xdg_surface_for_each_popup(struct wlr_xdg_surface *surface,
 	wlr_surface_iterator_func_t iterator, void *user_data);
 
 #endif

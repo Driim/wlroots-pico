@@ -229,9 +229,9 @@ void wlr_seat_set_primary_selection(struct wlr_seat *seat,
 	}
 
 	if (seat->primary_selection_source) {
+		wl_list_remove(&seat->primary_selection_source_destroy.link);
 		seat->primary_selection_source->cancel(seat->primary_selection_source);
 		seat->primary_selection_source = NULL;
-		wl_list_remove(&seat->primary_selection_source_destroy.link);
 	}
 
 	seat->primary_selection_source = source;
@@ -420,7 +420,7 @@ void wlr_primary_selection_device_manager_destroy(
 		return;
 	}
 	wl_list_remove(&manager->display_destroy.link);
-	// TODO: free wl_resources
+	// TODO: free resources
 	wl_global_destroy(manager->global);
 	free(manager);
 }

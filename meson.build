@@ -3,7 +3,7 @@ project(
 	'c',
 	version: '0.0.1',
 	license: 'MIT',
-	meson_version: '>=0.43.0',
+	meson_version: '>=0.44.0',
 	default_options: [
 		'c_std=c11',
 		'warning_level=2',
@@ -46,10 +46,10 @@ endif
 # Avoid wl_buffer deprecation warnings
 add_project_arguments('-DWL_HIDE_DEPRECATED', language: 'c')
 
-wayland_server = dependency('wayland-server')
+wayland_server = dependency('wayland-server', version: '>=1.15')
 wayland_client = dependency('wayland-client')
 wayland_egl    = dependency('wayland-egl')
-wayland_protos = dependency('wayland-protocols', version: '>=1.12')
+wayland_protos = dependency('wayland-protocols', version: '>=1.14')
 egl            = dependency('egl')
 glesv2         = dependency('glesv2')
 drm            = dependency('libdrm')
@@ -201,8 +201,13 @@ summary = [
 message('\n'.join(summary))
 
 
-subdir('rootston')
-subdir('examples')
+if get_option('enable-rootston')
+	subdir('rootston')
+endif
+
+if get_option('enable-examples')
+	subdir('examples')
+endif
 
 pkgconfig = import('pkgconfig')
 pkgconfig.generate(

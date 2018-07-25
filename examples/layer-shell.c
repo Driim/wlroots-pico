@@ -1,6 +1,12 @@
 #define _POSIX_C_SOURCE 199309L
+#ifdef __linux__
+#include <linux/input-event-codes.h>
+#elif __FreeBSD__
+#include <dev/evdev/input-event-codes.h>
+#endif
 #include <assert.h>
 #include <GLES2/gl2.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -12,15 +18,19 @@
 #include <wlr/render/egl.h>
 #include <wlr/util/log.h>
 #include "wlr-layer-shell-unstable-v1-client-protocol.h"
+#include "xdg-shell-client-protocol.h"
 
-static struct wl_compositor *compositor = NULL;
-static struct wl_seat *seat = NULL;
-static struct wl_shm *shm = NULL;
-static struct wl_pointer *pointer = NULL;
-static struct wl_keyboard *keyboard = NULL;
-static struct zwlr_layer_shell_v1 *layer_shell = NULL;
+static struct wl_display *display;
+static struct wl_compositor *compositor;
+static struct wl_seat *seat;
+static struct wl_shm *shm;
+static struct wl_pointer *pointer;
+static struct wl_keyboard *keyboard;
+static struct xdg_wm_base *xdg_wm_base;
+static struct zwlr_layer_shell_v1 *layer_shell;
+
 struct zwlr_layer_surface_v1 *layer_surface;
-static struct wl_output *wl_output = NULL;
+static struct wl_output *wl_output;
 
 struct wl_surface *wl_surface;
 struct wlr_egl egl;
@@ -28,7 +38,15 @@ struct wl_egl_window *egl_window;
 struct wlr_egl_surface *egl_surface;
 struct wl_callback *frame_callback;
 
-static uint32_t output = 0;
+static uint32_t output = UINT32_MAX;
+struct xdg_popup *popup;
+struct wl_surface *popup_wl_surface;
+struct wl_egl_window *popup_egl_window;
+static uint32_t popup_width = 256, popup_height = 256;
+struct wlr_egl_surface *popup_egl_surface;
+struct wl_callback *popup_frame_callback;
+float popup_alpha = 1.0, popup_red = 0.5f;
+
 static uint32_t layer = ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND;
 static uint32_t anchor = 0;
 static uint32_t width = 256, height = 256;
@@ -41,9 +59,9 @@ static double frame = 0;
 static int cur_x = -1, cur_y = -1;
 static int buttons = 0;
 
-struct wl_cursor_theme *cursor_theme;
 struct wl_cursor_image *cursor_image;
-struct wl_surface *cursor_surface;
+struct wl_cursor_image *popup_cursor_image;
+struct wl_surface *cursor_surface, *input_surface;
 
 static struct {
 	struct timespec last_frame;
@@ -52,6 +70,7 @@ static struct {
 } demo;
 
 static void draw(void);
+static void draw_popup(void);
 
 static void surface_frame_callback(
 		void *data, struct wl_callback *cb, uint32_t time) {
@@ -64,9 +83,19 @@ static struct wl_callback_listener frame_listener = {
 	.done = surface_frame_callback
 };
 
+static void popup_surface_frame_callback(
+		void *data, struct wl_callback *cb, uint32_t time) {
+	wl_callback_destroy(cb);
+	popup_frame_callback = NULL;
+	draw_popup();
+}
+
+static struct wl_callback_listener popup_frame_listener = {
+	.done = popup_surface_frame_callback
+};
+
 static void draw(void) {
 	eglMakeCurrent(egl.display, egl_surface, egl_surface, egl.context);
-
 	struct timespec ts;
 	clock_gettime(CLOCK_MONOTONIC, &ts);
 
@@ -120,6 +149,105 @@ static void draw(void) {
 	demo.last_frame = ts;
 }
 
+static void draw_popup(void) {
+	static float alpha_mod = -0.01;
+
+	eglMakeCurrent(egl.display, popup_egl_surface, popup_egl_surface, egl.context);
+	glViewport(0, 0, popup_width, popup_height);
+	glClearColor(popup_red, 0.5f, 0.5f, popup_alpha);
+	popup_alpha += alpha_mod;
+	if (popup_alpha < 0.01 || popup_alpha >= 1.0f) {
+		alpha_mod *= -1.0;
+	}
+	glClear(GL_COLOR_BUFFER_BIT);
+
+	popup_frame_callback = wl_surface_frame(popup_wl_surface);
+	assert(popup_frame_callback);
+	wl_callback_add_listener(popup_frame_callback, &popup_frame_listener, NULL);
+	eglSwapBuffers(egl.display, popup_egl_surface);
+	wl_surface_commit(popup_wl_surface);
+}
+
+static void xdg_surface_handle_configure(void *data,
+		struct xdg_surface *xdg_surface, uint32_t serial) {
+	xdg_surface_ack_configure(xdg_surface, serial);
+}
+
+static const struct xdg_surface_listener xdg_surface_listener = {
+	.configure = xdg_surface_handle_configure,
+};
+
+static void xdg_popup_configure(void *data, struct xdg_popup *xdg_popup,
+		int32_t x, int32_t y, int32_t width, int32_t height) {
+	wlr_log(WLR_DEBUG, "Popup configured %dx%d@%d,%d",
+			width, height, x, y);
+	popup_width = width;
+	popup_height = height;
+	if (popup_egl_window) {
+		wl_egl_window_resize(popup_egl_window, width, height, 0, 0);
+	}
+}
+
+static void popup_destroy(void) {
+	wlr_egl_destroy_surface(&egl, popup_egl_surface);
+	wl_egl_window_destroy(popup_egl_window);
+	xdg_popup_destroy(popup);
+	wl_surface_destroy(popup_wl_surface);
+	popup_wl_surface = NULL;
+	popup = NULL;
+	popup_egl_window = NULL;
+}
+
+static void xdg_popup_done(void *data, struct xdg_popup *xdg_popup) {
+	wlr_log(WLR_DEBUG, "Popup done");
+	popup_destroy();
+}
+
+static const struct xdg_popup_listener xdg_popup_listener = {
+	.configure = xdg_popup_configure,
+	.popup_done = xdg_popup_done,
+};
+
+static void create_popup(uint32_t serial) {
+	if (popup) {
+		return;
+	}
+	struct wl_surface *surface = wl_compositor_create_surface(compositor);
+	assert(xdg_wm_base && surface);
+	struct xdg_surface *xdg_surface =
+		xdg_wm_base_get_xdg_surface(xdg_wm_base, surface);
+	struct xdg_positioner *xdg_positioner =
+		xdg_wm_base_create_positioner(xdg_wm_base);
+	assert(xdg_surface && xdg_positioner);
+
+	xdg_positioner_set_size(xdg_positioner, popup_width, popup_height);
+	xdg_positioner_set_offset(xdg_positioner, 0, 0);
+	xdg_positioner_set_anchor_rect(xdg_positioner, cur_x, cur_y, 1, 1);
+	xdg_positioner_set_anchor(xdg_positioner, XDG_POSITIONER_ANCHOR_BOTTOM_RIGHT);
+
+	popup = xdg_surface_get_popup(xdg_surface, NULL, xdg_positioner);
+	xdg_popup_grab(popup, seat, serial);
+
+	assert(popup);
+
+	zwlr_layer_surface_v1_get_popup(layer_surface, popup);
+
+	xdg_surface_add_listener(xdg_surface, &xdg_surface_listener, NULL);
+	xdg_popup_add_listener(popup, &xdg_popup_listener, NULL);
+
+	wl_surface_commit(surface);
+	wl_display_roundtrip(display);
+
+	xdg_positioner_destroy(xdg_positioner);
+
+	popup_wl_surface = surface;
+	popup_egl_window = wl_egl_window_create(surface, popup_width, popup_height);
+	assert(popup_egl_window);
+	popup_egl_surface = wlr_egl_create_surface(&egl, popup_egl_window);
+	assert(popup_egl_surface);
+	draw_popup();
+}
+
 static void layer_surface_configure(void *data,
 		struct zwlr_layer_surface_v1 *surface,
 		uint32_t serial, uint32_t w, uint32_t h) {
@@ -133,7 +261,7 @@ static void layer_surface_configure(void *data,
 
 static void layer_surface_closed(void *data,
 		struct zwlr_layer_surface_v1 *surface) {
-	eglDestroySurface(egl.display, egl_surface);
+	wlr_egl_destroy_surface(&egl, egl_surface);
 	wl_egl_window_destroy(egl_window);
 	zwlr_layer_surface_v1_destroy(surface);
 	wl_surface_destroy(wl_surface);
@@ -148,11 +276,20 @@ struct zwlr_layer_surface_v1_listener layer_surface_listener = {
 static void wl_pointer_enter(void *data, struct wl_pointer *wl_pointer,
 		uint32_t serial, struct wl_surface *surface,
 		wl_fixed_t surface_x, wl_fixed_t surface_y) {
+	struct wl_cursor_image *image;
+	if (surface == popup_wl_surface) {
+		image = popup_cursor_image;
+	} else {
+		image = cursor_image;
+	}
 	wl_surface_attach(cursor_surface,
-			wl_cursor_image_get_buffer(cursor_image), 0, 0);
-	wl_pointer_set_cursor(wl_pointer, serial, cursor_surface,
-			cursor_image->hotspot_x, cursor_image->hotspot_y);
+		wl_cursor_image_get_buffer(image), 0, 0);
+	wl_surface_damage(cursor_surface, 1, 0,
+		image->width, image->height);
 	wl_surface_commit(cursor_surface);
+	wl_pointer_set_cursor(wl_pointer, serial, cursor_surface,
+		image->hotspot_x, image->hotspot_y);
+	input_surface = surface;
 }
 
 static void wl_pointer_leave(void *data, struct wl_pointer *wl_pointer,
@@ -169,10 +306,32 @@ static void wl_pointer_motion(void *data, struct wl_pointer *wl_pointer,
 
 static void wl_pointer_button(void *data, struct wl_pointer *wl_pointer,
 		uint32_t serial, uint32_t time, uint32_t button, uint32_t state) {
-	if (state == WL_POINTER_BUTTON_STATE_PRESSED) {
-		buttons++;
+	if (input_surface == wl_surface) {
+		if (state == WL_POINTER_BUTTON_STATE_PRESSED) {
+			if (button == BTN_RIGHT) {
+				if (popup_wl_surface) {
+					popup_destroy();
+				} else {
+					create_popup(serial);
+				}
+			} else {
+				buttons++;
+			}
+		} else {
+			if (button != BTN_RIGHT) {
+				buttons--;
+			}
+		}
+	} else if (input_surface == popup_wl_surface) {
+		if (state == WL_POINTER_BUTTON_STATE_PRESSED) {
+			if (button == BTN_LEFT && popup_red <= 0.9f) {
+				popup_red += 0.1;
+			} else if (button == BTN_RIGHT && popup_red >= 0.1f) {
+				popup_red -= 0.1;
+			}
+		}
 	} else {
-		buttons--;
+		assert(false && "Unknown surface");
 	}
 }
 
@@ -219,17 +378,17 @@ static void wl_keyboard_keymap(void *data, struct wl_keyboard *wl_keyboard,
 
 static void wl_keyboard_enter(void *data, struct wl_keyboard *wl_keyboard,
 		uint32_t serial, struct wl_surface *surface, struct wl_array *keys) {
-	wlr_log(L_DEBUG, "Keyboard enter");
+	wlr_log(WLR_DEBUG, "Keyboard enter");
 }
 
 static void wl_keyboard_leave(void *data, struct wl_keyboard *wl_keyboard,
 		uint32_t serial, struct wl_surface *surface) {
-	wlr_log(L_DEBUG, "Keyboard leave");
+	wlr_log(WLR_DEBUG, "Keyboard leave");
 }
 
 static void wl_keyboard_key(void *data, struct wl_keyboard *wl_keyboard,
 		uint32_t serial, uint32_t time, uint32_t key, uint32_t state) {
-	wlr_log(L_DEBUG, "Key event: %d %d", key, state);
+	wlr_log(WLR_DEBUG, "Key event: %d %d", key, state);
 }
 
 static void wl_keyboard_modifiers(void *data, struct wl_keyboard *wl_keyboard,
@@ -276,18 +435,20 @@ const struct wl_seat_listener seat_listener = {
 
 static void handle_global(void *data, struct wl_registry *registry,
 		uint32_t name, const char *interface, uint32_t version) {
-	if (strcmp(interface, "wl_compositor") == 0) {
+	if (strcmp(interface, wl_compositor_interface.name) == 0) {
 		compositor = wl_registry_bind(registry, name,
 				&wl_compositor_interface, 1);
 	} else if (strcmp(interface, wl_shm_interface.name) == 0) {
 		shm = wl_registry_bind(registry, name,
 				&wl_shm_interface, 1);
 	} else if (strcmp(interface, "wl_output") == 0) {
-		if (output == 0 && !wl_output) {
-			wl_output = wl_registry_bind(registry, name,
-					&wl_output_interface, 1);
-		} else {
-			output--;
+		if (output != UINT32_MAX) {
+			if (!wl_output) {
+				wl_output = wl_registry_bind(registry, name,
+						&wl_output_interface, 1);
+			} else {
+				output--;
+			}
 		}
 	} else if (strcmp(interface, wl_seat_interface.name) == 0) {
 		seat = wl_registry_bind(registry, name,
@@ -296,6 +457,9 @@ static void handle_global(void *data, struct wl_registry *registry,
 	} else if (strcmp(interface, zwlr_layer_shell_v1_interface.name) == 0) {
 		layer_shell = wl_registry_bind(
 				registry, name, &zwlr_layer_shell_v1_interface, 1);
+	} else if (strcmp(interface, xdg_wm_base_interface.name) == 0) {
+		xdg_wm_base = wl_registry_bind(
+				registry, name, &xdg_wm_base_interface, 1);
 	}
 }
 
@@ -310,7 +474,7 @@ static const struct wl_registry_listener registry_listener = {
 };
 
 int main(int argc, char **argv) {
-	wlr_log_init(L_DEBUG, NULL);
+	wlr_log_init(WLR_DEBUG, NULL);
 	char *namespace = "wlroots";
 	int exclusive_zone = 0;
 	int32_t margin_right = 0, margin_bottom = 0, margin_left = 0;
@@ -404,7 +568,7 @@ int main(int argc, char **argv) {
 		}
 	}
 
-	struct wl_display *display = wl_display_connect(NULL);
+	display = wl_display_connect(NULL);
 	if (display == NULL) {
 		fprintf(stderr, "Failed to create display\n");
 		return 1;
@@ -426,17 +590,19 @@ int main(int argc, char **argv) {
 		fprintf(stderr, "layer_shell not available\n");
 		return 1;
 	}
-	if (wl_output == NULL) {
-		fprintf(stderr, "wl_output not available\n");
-		return 1;
-	}
 
-	cursor_theme = wl_cursor_theme_load(NULL, 16, shm);
+	struct wl_cursor_theme *cursor_theme =
+		wl_cursor_theme_load(NULL, 16, shm);
 	assert(cursor_theme);
-	struct wl_cursor *cursor;
-	cursor = wl_cursor_theme_get_cursor(cursor_theme, "crosshair");
+	struct wl_cursor *cursor =
+		wl_cursor_theme_get_cursor(cursor_theme, "crosshair");
 	assert(cursor);
 	cursor_image = cursor->images[0];
+
+	cursor = wl_cursor_theme_get_cursor(cursor_theme, "tcross");
+	assert(cursor);
+	popup_cursor_image = cursor->images[0];
+
 	cursor_surface = wl_compositor_create_surface(compositor);
 	assert(cursor_surface);
 

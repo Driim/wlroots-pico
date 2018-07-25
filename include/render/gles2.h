@@ -18,11 +18,19 @@
 
 extern PFNGLEGLIMAGETARGETTEXTURE2DOESPROC glEGLImageTargetTexture2DOES;
 
-struct gles2_pixel_format {
+struct wlr_gles2_pixel_format {
 	uint32_t wl_format;
 	GLint gl_format, gl_type;
 	int depth, bpp;
 	bool has_alpha;
+};
+
+struct wlr_gles2_tex_shader {
+	GLuint program;
+	GLint proj;
+	GLint invert_y;
+	GLint tex;
+	GLint alpha;
 };
 
 struct wlr_gles2_renderer {
@@ -32,11 +40,19 @@ struct wlr_gles2_renderer {
 	const char *exts_str;
 
 	struct {
-		GLuint quad;
-		GLuint ellipse;
-		GLuint tex_rgba;
-		GLuint tex_rgbx;
-		GLuint tex_ext;
+		struct {
+			GLuint program;
+			GLint proj;
+			GLint color;
+		} quad;
+		struct {
+			GLuint program;
+			GLint proj;
+			GLint color;
+		} ellipse;
+		struct wlr_gles2_tex_shader tex_rgba;
+		struct wlr_gles2_tex_shader tex_rgbx;
+		struct wlr_gles2_tex_shader tex_ext;
 	} shaders;
 
 	uint32_t viewport_width, viewport_height;
@@ -68,15 +84,16 @@ struct wlr_gles2_texture {
 	};
 };
 
-const struct gles2_pixel_format *gles2_format_from_wl(enum wl_shm_format fmt);
-const enum wl_shm_format *gles2_formats(size_t *len);
+const struct wlr_gles2_pixel_format *get_gles2_format_from_wl(
+	enum wl_shm_format fmt);
+const enum wl_shm_format *get_gles2_formats(size_t *len);
 
-struct wlr_gles2_texture *gles2_get_texture_in_context(
+struct wlr_gles2_texture *get_gles2_texture_in_context(
 	struct wlr_texture *wlr_texture);
 
-void gles2_push_marker(const char *file, const char *func);
-void gles2_pop_marker(void);
-#define GLES2_DEBUG_PUSH gles2_push_marker(wlr_strip_path(__FILE__), __func__)
-#define GLES2_DEBUG_POP gles2_pop_marker()
+void push_gles2_marker(const char *file, const char *func);
+void pop_gles2_marker(void);
+#define PUSH_GLES2_DEBUG push_gles2_marker(_wlr_strip_path(__FILE__), __func__)
+#define POP_GLES2_DEBUG pop_gles2_marker()
 
 #endif

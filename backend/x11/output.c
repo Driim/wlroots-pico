@@ -1,6 +1,9 @@
+#define _POSIX_C_SOURCE 200809L
 #include <assert.h>
 #include <stdlib.h>
+#include <string.h>
 #include <wlr/interfaces/wlr_output.h>
+#include <wlr/interfaces/wlr_pointer.h>
 #include <wlr/util/log.h>
 #include "backend/x11.h"
 #include "util/signal.h"
@@ -44,8 +47,16 @@ static bool output_set_custom_mode(struct wlr_output *wlr_output,
 	output_set_refresh(&output->wlr_output, refresh);
 
 	const uint32_t values[] = { width, height };
-	xcb_configure_window(x11->xcb_conn, output->win,
+	xcb_void_cookie_t cookie = xcb_configure_window_checked(x11->xcb_conn, output->win,
 		XCB_CONFIG_WINDOW_WIDTH | XCB_CONFIG_WINDOW_HEIGHT, values);
+
+	xcb_generic_error_t *error;
+	if ((error = xcb_request_check(x11->xcb_conn, cookie))) {
+		wlr_log(WLR_ERROR, "Could not set window size to %dx%d\n", width, height);
+		free(error);
+		return false;
+	}
+
 	return true;
 }
 
@@ -59,9 +70,11 @@ static void output_destroy(struct wlr_output *wlr_output) {
 	struct wlr_x11_output *output = (struct wlr_x11_output *)wlr_output;
 	struct wlr_x11_backend *x11 = output->x11;
 
+	wlr_input_device_destroy(&output->pointer_dev);
+
 	wl_list_remove(&output->link);
 	wl_event_source_remove(output->frame_timer);
-	eglDestroySurface(x11->egl.display, output->surf);
+	wlr_egl_destroy_surface(&x11->egl, output->surf);
 	xcb_destroy_window(x11->xcb_conn, output->win);
 	xcb_flush(x11->xcb_conn);
 	free(output);
@@ -129,7 +142,7 @@ struct wlr_output *wlr_x11_output_create(struct wlr_backend *backend) {
 
 	output->surf = wlr_egl_create_surface(&x11->egl, &output->win);
 	if (!output->surf) {
-		wlr_log(L_ERROR, "Failed to create EGL surface");
+		wlr_log(WLR_ERROR, "Failed to create EGL surface");
 		free(output);
 		return NULL;
 	}
@@ -155,22 +168,30 @@ struct wlr_output *wlr_x11_output_create(struct wlr_backend *backend) {
 	struct wl_event_loop *ev = wl_display_get_event_loop(x11->wl_display);
 	output->frame_timer = wl_event_loop_add_timer(ev, signal_frame, output);
 
+	wl_list_insert(&x11->outputs, &output->link);
+
 	wl_event_source_timer_update(output->frame_timer, output->frame_delay);
 	wlr_output_update_enabled(wlr_output, true);
 
-	wl_list_insert(&x11->outputs, &output->link);
+	wlr_input_device_init(&output->pointer_dev, WLR_INPUT_DEVICE_POINTER,
+		&input_device_impl, "X11 pointer", 0, 0);
+	wlr_pointer_init(&output->pointer, &pointer_impl);
+	output->pointer_dev.pointer = &output->pointer;
+	output->pointer_dev.output_name = strdup(wlr_output->name);
+
 	wlr_signal_emit_safe(&x11->backend.events.new_output, wlr_output);
+	wlr_signal_emit_safe(&x11->backend.events.new_input, &output->pointer_dev);
 
 	return wlr_output;
 }
 
-void x11_output_handle_configure_notify(struct wlr_x11_output *output,
+void handle_x11_configure_notify(struct wlr_x11_output *output,
 		xcb_configure_notify_event_t *ev) {
 	wlr_output_update_custom_mode(&output->wlr_output, ev->width,
 		ev->height, output->wlr_output.refresh);
 
 	// Move the pointer to its new location
-	x11_update_pointer_position(output, output->x11->time);
+	update_x11_pointer_position(output, output->x11->time);
 }
 
 bool wlr_output_is_x11(struct wlr_output *wlr_output) {

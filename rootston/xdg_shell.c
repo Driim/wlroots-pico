@@ -18,6 +18,8 @@ static void popup_destroy(struct roots_view_child *child) {
 	}
 	wl_list_remove(&popup->destroy.link);
 	wl_list_remove(&popup->new_popup.link);
+	wl_list_remove(&popup->map.link);
+	wl_list_remove(&popup->unmap.link);
 	view_child_finish(&popup->view_child);
 	free(popup);
 }
@@ -48,6 +50,59 @@ static void popup_handle_new_popup(struct wl_listener *listener, void *data) {
 	popup_create(popup->view_child.view, wlr_popup);
 }
 
+static void popup_unconstrain(struct roots_xdg_popup *popup) {
+	// get the output of the popup's positioner anchor point and convert it to
+	// the toplevel parent's coordinate system and then pass it to
+	// wlr_xdg_popup_v6_unconstrain_from_box
+
+	// TODO: unconstrain popups for rotated windows
+	if (popup->view_child.view->rotation != 0.0) {
+		return;
+	}
+
+	struct roots_view *view = popup->view_child.view;
+	struct wlr_output_layout *layout = view->desktop->layout;
+	struct wlr_xdg_popup *wlr_popup = popup->wlr_popup;
+
+	int anchor_lx, anchor_ly;
+	wlr_xdg_popup_get_anchor_point(wlr_popup, &anchor_lx, &anchor_ly);
+
+	int popup_lx, popup_ly;
+	wlr_xdg_popup_get_toplevel_coords(wlr_popup, wlr_popup->geometry.x,
+		wlr_popup->geometry.y, &popup_lx, &popup_ly);
+	popup_lx += view->x;
+	popup_ly += view->y;
+
+	anchor_lx += popup_lx;
+	anchor_ly += popup_ly;
+
+	double dest_x = 0, dest_y = 0;
+	wlr_output_layout_closest_point(layout, NULL, anchor_lx, anchor_ly,
+		&dest_x, &dest_y);
+
+	struct wlr_output *output =
+		wlr_output_layout_output_at(layout, dest_x, dest_y);
+
+	if (output == NULL) {
+		return;
+	}
+
+	int width = 0, height = 0;
+	wlr_output_effective_resolution(output, &width, &height);
+
+	// the output box expressed in the coordinate system of the toplevel parent
+	// of the popup
+	struct wlr_box output_toplevel_sx_box = {
+		.x = output->lx - view->x,
+		.y = output->ly - view->y,
+		.width = width,
+		.height = height
+	};
+
+	wlr_xdg_popup_unconstrain_from_box(
+			popup->wlr_popup, &output_toplevel_sx_box);
+}
+
 static struct roots_xdg_popup *popup_create(struct roots_view *view,
 		struct wlr_xdg_popup *wlr_popup) {
 	struct roots_xdg_popup *popup =
@@ -66,6 +121,9 @@ static struct roots_xdg_popup *popup_create(struct roots_view *view,
 	wl_signal_add(&wlr_popup->base->events.unmap, &popup->unmap);
 	popup->new_popup.notify = popup_handle_new_popup;
 	wl_signal_add(&wlr_popup->base->events.new_popup, &popup->new_popup);
+
+	popup_unconstrain(popup);
+
 	return popup;
 }
 
@@ -74,15 +132,10 @@ static void get_size(const struct roots_view *view, struct wlr_box *box) {
 	assert(view->type == ROOTS_XDG_SHELL_VIEW);
 	struct wlr_xdg_surface *surface = view->xdg_surface;
 
-	if (surface->geometry.width > 0 && surface->geometry.height > 0) {
-		box->width = surface->geometry.width;
-		box->height = surface->geometry.height;
-	} else if (view->wlr_surface != NULL) {
-		box->width = view->wlr_surface->current->width;
-		box->height = view->wlr_surface->current->height;
-	} else {
-		box->width = box->height = 0;
-	}
+	struct wlr_box geo_box;
+	wlr_xdg_surface_get_geometry(surface, &geo_box);
+	box->width = geo_box.width;
+	box->height = geo_box.height;
 }
 
 static void activate(struct roots_view *view, bool active) {
@@ -345,14 +398,14 @@ void handle_xdg_shell_surface(struct wl_listener *listener, void *data) {
 	assert(surface->role != WLR_XDG_SURFACE_ROLE_NONE);
 
 	if (surface->role == WLR_XDG_SURFACE_ROLE_POPUP) {
-		wlr_log(L_DEBUG, "new xdg popup");
+		wlr_log(WLR_DEBUG, "new xdg popup");
 		return;
 	}
 
 	struct roots_desktop *desktop =
 		wl_container_of(listener, desktop, xdg_shell_surface);
 
-	wlr_log(L_DEBUG, "new xdg toplevel: title=%s, app_id=%s",
+	wlr_log(WLR_DEBUG, "new xdg toplevel: title=%s, app_id=%s",
 		surface->toplevel->title, surface->toplevel->app_id);
 	wlr_xdg_surface_ping(surface);
 

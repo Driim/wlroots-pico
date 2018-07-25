@@ -11,7 +11,7 @@
 static bool backend_start(struct wlr_backend *wlr_backend) {
 	struct wlr_headless_backend *backend =
 		(struct wlr_headless_backend *)wlr_backend;
-	wlr_log(L_INFO, "Starting headless backend");
+	wlr_log(WLR_INFO, "Starting headless backend");
 
 	struct wlr_headless_output *output;
 	wl_list_for_each(output, &backend->outputs, link) {
@@ -54,6 +54,7 @@ static void backend_destroy(struct wlr_backend *wlr_backend) {
 
 	wlr_signal_emit_safe(&wlr_backend->events.destroy, backend);
 
+	wlr_renderer_destroy(backend->renderer);
 	wlr_egl_finish(&backend->egl);
 	free(backend);
 }
@@ -77,13 +78,14 @@ static void handle_display_destroy(struct wl_listener *listener, void *data) {
 	backend_destroy(&backend->backend);
 }
 
-struct wlr_backend *wlr_headless_backend_create(struct wl_display *display) {
-	wlr_log(L_INFO, "Creating headless backend");
+struct wlr_backend *wlr_headless_backend_create(struct wl_display *display,
+		wlr_renderer_create_func_t create_renderer_func) {
+	wlr_log(WLR_INFO, "Creating headless backend");
 
 	struct wlr_headless_backend *backend =
 		calloc(1, sizeof(struct wlr_headless_backend));
 	if (!backend) {
-		wlr_log(L_ERROR, "Failed to allocate wlr_headless_backend");
+		wlr_log(WLR_ERROR, "Failed to allocate wlr_headless_backend");
 		return NULL;
 	}
 	wlr_backend_init(&backend->backend, &backend_impl);
@@ -100,16 +102,18 @@ struct wlr_backend *wlr_headless_backend_create(struct wl_display *display) {
 		EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
 		EGL_NONE,
 	};
-	bool ok = wlr_egl_init(&backend->egl, EGL_PLATFORM_SURFACELESS_MESA, NULL,
-		(EGLint *)config_attribs, 0);
-	if (!ok) {
-		free(backend);
-		return NULL;
+
+	if (!create_renderer_func) {
+		create_renderer_func = wlr_renderer_autocreate;
 	}
 
-	backend->renderer = wlr_gles2_renderer_create(&backend->egl);
-	if (backend->renderer == NULL) {
-		wlr_log(L_ERROR, "Failed to create renderer");
+	backend->renderer = create_renderer_func(&backend->egl, EGL_PLATFORM_SURFACELESS_MESA,
+		NULL, (EGLint*)config_attribs, 0);
+
+	if (!backend->renderer) {
+		wlr_log(WLR_ERROR, "Failed to create renderer");
+		free(backend);
+		return NULL;
 	}
 
 	backend->display_destroy.notify = handle_display_destroy;

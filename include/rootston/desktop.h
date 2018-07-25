@@ -8,12 +8,13 @@
 #include <wlr/types/wlr_idle.h>
 #include <wlr/types/wlr_input_inhibitor.h>
 #include <wlr/types/wlr_layer_shell.h>
-#include <wlr/types/wlr_linux_dmabuf.h>
+#include <wlr/types/wlr_linux_dmabuf_v1.h>
 #include <wlr/types/wlr_list.h>
 #include <wlr/types/wlr_output_layout.h>
 #include <wlr/types/wlr_output.h>
 #include <wlr/types/wlr_primary_selection.h>
 #include <wlr/types/wlr_screenshooter.h>
+#include <wlr/types/wlr_virtual_keyboard_v1.h>
 #include <wlr/types/wlr_wl_shell.h>
 #include <wlr/types/wlr_xcursor_manager.h>
 #include <wlr/types/wlr_xdg_shell_v6.h>
@@ -21,6 +22,7 @@
 #include <wlr/types/wlr_list.h>
 #include <wlr/types/wlr_idle.h>
 #include <wlr/types/wlr_idle_inhibit_v1.h>
+#include <wlr/types/wlr_screencopy_v1.h>
 #include "rootston/view.h"
 #include "rootston/config.h"
 #include "rootston/output.h"
@@ -45,13 +47,17 @@ struct roots_desktop {
 	struct wlr_xdg_shell *xdg_shell;
 	struct wlr_gamma_control_manager *gamma_control_manager;
 	struct wlr_screenshooter *screenshooter;
+	struct wlr_export_dmabuf_manager_v1 *export_dmabuf_manager_v1;
 	struct wlr_server_decoration_manager *server_decoration_manager;
 	struct wlr_primary_selection_device_manager *primary_selection_device_manager;
 	struct wlr_idle *idle;
 	struct wlr_idle_inhibit_manager_v1 *idle_inhibit;
 	struct wlr_input_inhibit_manager *input_inhibit;
-	struct wlr_linux_dmabuf *linux_dmabuf;
+	struct wlr_linux_dmabuf_v1 *linux_dmabuf;
 	struct wlr_layer_shell *layer_shell;
+	struct wlr_virtual_keyboard_manager_v1 *virtual_keyboard;
+	struct wlr_screencopy_manager_v1 *screencopy;
+	struct wlr_tablet_manager_v2 *tablet_v2;
 
 	struct wl_listener new_output;
 	struct wl_listener layout_change;
@@ -62,11 +68,11 @@ struct roots_desktop {
 	struct wl_listener decoration_new;
 	struct wl_listener input_inhibit_activate;
 	struct wl_listener input_inhibit_deactivate;
+	struct wl_listener virtual_keyboard_new;
 
 #ifdef WLR_HAS_XWAYLAND
 	struct wlr_xwayland *xwayland;
 	struct wl_listener xwayland_surface;
-	struct wl_listener xwayland_ready;
 #endif
 	struct phosh *phosh;
 };
