@@ -891,6 +891,7 @@ struct roots_desktop *desktop_create(struct roots_server *server,
 
 void desktop_destroy(struct roots_desktop *desktop) {
 	phosh_destroy(desktop->phosh);
+	desktop->phosh = NULL;
 }
 
 struct roots_output *desktop_output_from_wlr_output(
