@@ -5,10 +5,12 @@
 
 struct phosh {
 	struct wl_resource* resource;
-	struct wl_display* display;
+	struct wl_global *global;
 	struct roots_desktop *desktop;
-	struct wl_listener layer_shell_surface;
-
+	struct {
+		struct wl_listener layer_shell_new_surface;
+		struct wl_listener panel_surface_destroy;
+	} listeners;
 	struct wlr_layer_surface *panel;
 };
 
