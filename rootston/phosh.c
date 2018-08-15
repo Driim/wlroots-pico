@@ -12,12 +12,14 @@
 #include "rootston/desktop.h"
 #include "rootston/phosh.h"
 
-static void phosh_rotate_output(struct wl_client *client,
+#define PHOSH_PRIVATE_VERSION 1
+
+static void phosh_rotate_display(struct wl_client *client,
 	struct wl_resource *resource,
 	struct wl_resource *surface_resource,
 	uint32_t degrees)
 {
-  struct phosh *shell = wl_resource_get_user_data(resource);
+  struct phosh_private *phosh = wl_resource_get_user_data(resource);
   enum wl_output_transform transform = WL_OUTPUT_TRANSFORM_NORMAL;
 
   wlr_log(WLR_DEBUG, "rotation: %d", degrees);
@@ -43,17 +45,17 @@ static void phosh_rotate_output(struct wl_client *client,
 	  break;
   }
 
-  if (!shell->panel) {
+  if (!phosh->panel) {
 	  wlr_log(WLR_ERROR, "Tried to rotate inexistent panel");
 	  return;
   }
 
-  wlr_output_set_transform(shell->panel->output, transform);
+  wlr_output_set_transform(phosh->panel->output, transform);
 }
 
 
 static void handle_phosh_panel_surface_destroy (struct wl_listener *listener, void *data) {
-	struct phosh *phosh =
+	struct phosh_private *phosh =
 		wl_container_of(listener, phosh, listeners.panel_surface_destroy);
 
 	if (phosh->panel) {
@@ -65,7 +67,7 @@ static void handle_phosh_panel_surface_destroy (struct wl_listener *listener, vo
 
 static void handle_phosh_layer_shell_new_surface(struct wl_listener *listener, void *data) {
 	struct wlr_layer_surface *surface = data;
-	struct phosh *phosh =
+	struct phosh_private *phosh =
 		wl_container_of(listener, phosh, listeners.layer_shell_new_surface);
 
 	/* We're only interested in the panel */
@@ -79,36 +81,37 @@ static void handle_phosh_layer_shell_new_surface(struct wl_listener *listener, v
 }
 
 
-static void phosh_resource_destroy(struct wl_resource *resource) {
-	struct phosh *phosh = wl_resource_get_user_data(resource);
+static void phosh_handle_resource_destroy(struct wl_resource *resource) {
+	struct phosh_private *phosh = wl_resource_get_user_data(resource);
 
 	phosh->resource = NULL;
 	phosh->panel = NULL;
+	wlr_log(WLR_DEBUG, "Destroying phosh %p (res %p)", phosh, resource);
 }
 
 
-static const struct phosh_private_interface phosh_impl = {
-	phosh_rotate_output,
+static const struct phosh_private_interface phosh_private_impl = {
+	phosh_rotate_display,
 };
 
 
 static void
-bind_phosh(struct wl_client *client, void *data, uint32_t version, uint32_t id) {
-	struct phosh *phosh = data;
+phosh_bind(struct wl_client *client, void *data, uint32_t version, uint32_t id) {
+	struct phosh_private *phosh = data;
 	struct wl_resource *resource  = wl_resource_create(client, &phosh_private_interface,
-		1, id);
+		version, id);
 
 	if (phosh->resource) {
 		wl_resource_post_error(resource, WL_DISPLAY_ERROR_INVALID_OBJECT,
 			"Only a single client can bind to phosh's private protocol");
 	}
 
-	/* FIXME: unsafe needs client == shell->child.client */
+	/* FIXME: unsafe, needs client == shell->child.client */
 	if (true) {
 		wlr_log(WLR_ERROR, "FIXME: allowing every client to bind as phosh");
 		wl_resource_set_implementation(resource,
-			&phosh_impl,
-			phosh, phosh_resource_destroy);
+			&phosh_private_impl,
+			phosh, phosh_handle_resource_destroy);
 		phosh->resource = resource;
 		return;
 	}
@@ -118,29 +121,36 @@ bind_phosh(struct wl_client *client, void *data, uint32_t version, uint32_t id) 
 }
 
 
-struct phosh*
+struct phosh_private*
 phosh_create(struct roots_desktop *desktop, struct wl_display *display) {
-  struct phosh *shell = calloc(1, sizeof (struct phosh));
-  if (!shell)
+  struct phosh_private *phosh = calloc(1, sizeof (struct phosh_private));
+  if (!phosh)
 	  return NULL;
 
-  shell->desktop = desktop;
+  phosh->desktop = desktop;
 
   wl_signal_add(&desktop->layer_shell->events.new_surface,
-	  &shell->listeners.layer_shell_new_surface);
-  shell->listeners.layer_shell_new_surface.notify = handle_phosh_layer_shell_new_surface;
+	  &phosh->listeners.layer_shell_new_surface);
+  phosh->listeners.layer_shell_new_surface.notify = handle_phosh_layer_shell_new_surface;
 
-  wlr_log(WLR_INFO, "Initializing phosh private inrerface");
-  shell->global = wl_global_create(display, &phosh_private_interface, 1, shell, bind_phosh);
-  if (!shell->global) {
+  wlr_log(WLR_INFO, "Initializing phosh private interface");
+  phosh->global = wl_global_create(display, &phosh_private_interface, PHOSH_PRIVATE_VERSION, phosh, phosh_bind);
+  if (!phosh->global) {
 	  return NULL;
   }
 
-  return shell;
+  return phosh;
 }
 
 
-void phosh_destroy(struct phosh *shell) {
-	wl_list_remove(&shell->listeners.layer_shell_new_surface.link);
-	wl_global_destroy(shell->global);
+void phosh_destroy(struct phosh_private *phosh) {
+	wl_list_remove(&phosh->listeners.layer_shell_new_surface.link);
+	wl_global_destroy(phosh->global);
+}
+
+struct phosh_private *phosh_private_from_resource(
+		struct wl_resource *resource) {
+	assert(wl_resource_instance_of(resource, &phosh_private_interface,
+		&phosh_private_impl));
+	return wl_resource_get_user_data(resource);
 }
