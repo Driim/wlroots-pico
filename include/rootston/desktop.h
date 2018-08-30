@@ -74,7 +74,7 @@ struct roots_desktop {
 	struct wlr_xwayland *xwayland;
 	struct wl_listener xwayland_surface;
 #endif
-	struct phosh *phosh;
+	struct phosh_private *phosh;
 };
 
 struct roots_server;
