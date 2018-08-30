@@ -9,10 +9,12 @@
              summary="an invalid argument was provided in a request"/>
     </enum>
 
-    <!-- only one display for now -->
+    <!-- only primary output for now -->
+
+
     <request name="rotate_display">
-      <description summary="rotate display">
-	Rotate the display clockwise 0, 90, 180 or 270 degree.
+      <description summary="rotate output">
+        Rotate the output clockwise 0, 90, 180 or 270 degree.
       </description>
       <arg name="surface" type="object" interface="wl_surface"/>
       <arg name="degree" type="uint"/>
