@@ -97,4 +97,6 @@ refer to `rootston -h`.
 
 ## Contributing
 
+The Librem5 version of wlroots repository is structured in a particular way. The procedure is described in the [CONTRIBUTING-librem5.md](https://source.puri.sm/Librem5/wlroots/blob/librem5/CONTRIBUTING-librem5.md) file.
+
 See [CONTRIBUTING.md](https://github.com/swaywm/wlroots/blob/master/CONTRIBUTING.md).
