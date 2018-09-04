@@ -1,6 +1,6 @@
 variables:
   DEPS: debhelper libcap-dev libdrm-dev libegl1-mesa-dev libgbm-dev
-        libgles2-mesa-dev libinput-dev libpixman-1-dev libsystemd-dev
+        libgles2-mesa-dev libinput-dev libpixman-1-dev libpng-dev libsystemd-dev
         libwayland-dev libxcb1-dev libxcb-composite0-dev libxcb-icccm4-dev
         libxcb-image0-dev libxcb-render0-dev libxcb-xfixes0-dev
         libxkbcommon-dev meson pkg-config wayland-protocols
