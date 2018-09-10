@@ -1,4 +1,4 @@
-#define _POSIX_C_SOURCE 1
+#define _POSIX_C_SOURCE 199309L
 #include <assert.h>
 #include <stdlib.h>
 #include <sys/mman.h>
@@ -99,7 +99,7 @@ static void virtual_keyboard_destroy_resource(struct wl_resource *resource) {
 		virtual_keyboard_from_resource(resource);
 	wlr_signal_emit_safe(&keyboard->events.destroy, keyboard);
 	wl_list_remove(&keyboard->link);
-	wlr_keyboard_destroy(keyboard->input_device.keyboard);
+	wlr_input_device_destroy(&keyboard->input_device);
 	free(keyboard);
 }
 
@@ -223,6 +223,7 @@ struct wlr_virtual_keyboard_manager_v1*
 	wl_list_init(&manager->virtual_keyboards);
 
 	wl_signal_init(&manager->events.new_virtual_keyboard);
+	wl_signal_init(&manager->events.destroy);
 	manager->global = wl_global_create(display,
 		&zwp_virtual_keyboard_manager_v1_interface, 1, manager,
 		virtual_keyboard_manager_bind);
@@ -231,6 +232,7 @@ struct wlr_virtual_keyboard_manager_v1*
 
 void wlr_virtual_keyboard_manager_v1_destroy(
 		struct wlr_virtual_keyboard_manager_v1 *manager) {
+	wlr_signal_emit_safe(&manager->events.destroy, manager);
 	wl_list_remove(&manager->display_destroy.link);
 	wl_global_destroy(manager->global);
 	struct wl_resource *resource, *resource_tmp;

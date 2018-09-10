@@ -5,6 +5,7 @@
 #include <wlr/types/wlr_screencopy_v1.h>
 #include <wlr/backend.h>
 #include "wlr-screencopy-unstable-v1-protocol.h"
+#include "util/signal.h"
 
 #define SCREENCOPY_MANAGER_VERSION 1
 
@@ -295,6 +296,8 @@ struct wlr_screencopy_manager_v1 *wlr_screencopy_manager_v1_create(
 	wl_list_init(&manager->resources);
 	wl_list_init(&manager->frames);
 
+	wl_signal_init(&manager->events.destroy);
+
 	manager->display_destroy.notify = handle_display_destroy;
 	wl_display_add_destroy_listener(display, &manager->display_destroy);
 
@@ -306,6 +309,7 @@ void wlr_screencopy_manager_v1_destroy(
 	if (manager == NULL) {
 		return;
 	}
+	wlr_signal_emit_safe(&manager->events.destroy, manager);
 	wl_list_remove(&manager->display_destroy.link);
 	struct wlr_screencopy_frame_v1 *frame, *tmp_frame;
 	wl_list_for_each_safe(frame, tmp_frame, &manager->frames, link) {

@@ -1,3 +1,11 @@
+/*
+ * This an unstable interface of wlroots. No guarantees are made regarding the
+ * future consistency of this API.
+ */
+#ifndef WLR_USE_UNSTABLE
+#error "Add -DWLR_USE_UNSTABLE to enable unstable wlroots features"
+#endif
+
 #ifndef WLR_TYPES_WLR_XDG_SHELL_H
 #define WLR_TYPES_WLR_XDG_SHELL_H
 #include <wlr/types/wlr_box.h>
@@ -21,6 +29,7 @@ struct wlr_xdg_shell {
 		 * surface will be ready to be managed on the `map` event.
 		 */
 		struct wl_signal new_surface;
+		struct wl_signal destroy;
 	} events;
 
 	void *data;
@@ -119,10 +128,13 @@ struct wlr_xdg_toplevel {
 		struct wl_signal request_resize;
 		struct wl_signal request_show_window_menu;
 		struct wl_signal set_parent;
+		struct wl_signal set_title;
+		struct wl_signal set_app_id;
 	} events;
 };
 
 struct wlr_xdg_surface_configure {
+	struct wlr_xdg_surface *surface;
 	struct wl_list link; // wlr_xdg_surface::configure_list
 	uint32_t serial;
 
@@ -186,6 +198,10 @@ struct wlr_xdg_surface {
 		 * surface has been hidden or is about to be destroyed.
 		 */
 		struct wl_signal unmap;
+
+		// for protocol extensions
+		struct wl_signal configure; // wlr_xdg_surface_configure
+		struct wl_signal ack_configure; // wlr_xdg_surface_configure
 	} events;
 
 	void *data;
@@ -223,6 +239,8 @@ void wlr_xdg_shell_destroy(struct wlr_xdg_shell *xdg_shell);
 struct wlr_xdg_surface *wlr_xdg_surface_from_resource(
 		struct wl_resource *resource);
 struct wlr_xdg_surface *wlr_xdg_surface_from_popup_resource(
+		struct wl_resource *resource);
+struct wlr_xdg_surface *wlr_xdg_surface_from_toplevel_resource(
 		struct wl_resource *resource);
 
 struct wlr_box wlr_xdg_positioner_get_geometry(
@@ -281,13 +299,6 @@ uint32_t wlr_xdg_toplevel_set_tiled(struct wlr_xdg_surface *surface,
  * Request that this xdg surface closes.
  */
 void wlr_xdg_surface_send_close(struct wlr_xdg_surface *surface);
-
-/**
- * Compute the popup position in its parent's surface-local coordinate system.
- * This aborts if called for popups whose parent is not an xdg_surface.
- */
-void wlr_xdg_surface_popup_get_position(struct wlr_xdg_surface *surface,
-		double *popup_sx, double *popup_sy);
 
 /**
  * Get the geometry for this positioner based on the anchor rect, gravity, and
@@ -350,7 +361,8 @@ struct wlr_xdg_surface *wlr_xdg_surface_from_wlr_surface(
  *
  * The x and y value can be <0
  */
-void wlr_xdg_surface_get_geometry(struct wlr_xdg_surface *surface, struct wlr_box *box);
+void wlr_xdg_surface_get_geometry(struct wlr_xdg_surface *surface,
+		struct wlr_box *box);
 
 /**
  * Call `iterator` on each surface and popup in the xdg-surface tree, with the
@@ -358,7 +370,13 @@ void wlr_xdg_surface_get_geometry(struct wlr_xdg_surface *surface, struct wlr_bo
  * from root to leaves (in rendering order).
  */
 void wlr_xdg_surface_for_each_surface(struct wlr_xdg_surface *surface,
-	wlr_surface_iterator_func_t iterator, void *user_data);
+		wlr_surface_iterator_func_t iterator, void *user_data);
+
+/**
+ * Schedule a surface configuration. This should only be called by protocols
+ * extending the shell.
+ */
+uint32_t wlr_xdg_surface_schedule_configure(struct wlr_xdg_surface *surface);
 
 /**
  * Call `iterator` on each popup in the xdg-surface tree, with the popup's

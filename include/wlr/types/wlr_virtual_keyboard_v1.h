@@ -1,3 +1,11 @@
+/*
+ * This an unstable interface of wlroots. No guarantees are made regarding the
+ * future consistency of this API.
+ */
+#ifndef WLR_USE_UNSTABLE
+#error "Add -DWLR_USE_UNSTABLE to enable unstable wlroots features"
+#endif
+
 #ifndef WLR_TYPES_WLR_VIRTUAL_KEYBOARD_V1_H
 #define WLR_TYPES_WLR_VIRTUAL_KEYBOARD_V1_H
 
@@ -14,6 +22,7 @@ struct wlr_virtual_keyboard_manager_v1 {
 
 	struct {
 		struct wl_signal new_virtual_keyboard; // struct wlr_virtual_keyboard_v1*
+		struct wl_signal destroy;
 	} events;
 };
 

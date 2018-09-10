@@ -6,6 +6,7 @@
 #include <wlr/types/wlr_xdg_output.h>
 #include <wlr/util/log.h>
 #include "xdg-output-unstable-v1-protocol.h"
+#include "util/signal.h"
 
 #define OUTPUT_MANAGER_VERSION 2
 
@@ -199,7 +200,7 @@ static void handle_layout_change(struct wl_listener *listener, void *data) {
 
 static void handle_layout_destroy(struct wl_listener *listener, void *data) {
 	struct wlr_xdg_output_manager *manager =
-		wl_container_of(listener, manager, layout_change);
+		wl_container_of(listener, manager, layout_destroy);
 	wlr_xdg_output_manager_destroy(manager);
 }
 
@@ -227,6 +228,8 @@ struct wlr_xdg_output_manager *wlr_xdg_output_manager_create(
 		add_output(manager, layout_output);
 	}
 
+	wl_signal_init(&manager->events.destroy);
+
 	manager->layout_add.notify = handle_layout_add;
 	wl_signal_add(&layout->events.add, &manager->layout_add);
 	manager->layout_change.notify = handle_layout_change;
@@ -245,6 +248,7 @@ void wlr_xdg_output_manager_destroy(struct wlr_xdg_output_manager *manager) {
 	wl_resource_for_each_safe(resource, resource_tmp, &manager->resources) {
 		wl_resource_destroy(resource);
 	}
+	wlr_signal_emit_safe(&manager->events.destroy, manager);
 	wl_list_remove(&manager->layout_add.link);
 	wl_list_remove(&manager->layout_change.link);
 	wl_list_remove(&manager->layout_destroy.link);

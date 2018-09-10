@@ -1,3 +1,11 @@
+/*
+ * This an unstable interface of wlroots. No guarantees are made regarding the
+ * future consistency of this API.
+ */
+#ifndef WLR_USE_UNSTABLE
+#error "Add -DWLR_USE_UNSTABLE to enable unstable wlroots features"
+#endif
+
 #ifndef WLR_TYPES_WLR_XDG_OUTPUT_H
 #define WLR_TYPES_WLR_XDG_OUTPUT_H
 #include <wayland-server.h>
@@ -26,6 +34,10 @@ struct wlr_xdg_output_manager {
 	struct wl_listener layout_add;
 	struct wl_listener layout_change;
 	struct wl_listener layout_destroy;
+
+	struct {
+		struct wl_signal destroy;
+	} events;
 };
 
 struct wlr_xdg_output_manager *wlr_xdg_output_manager_create(

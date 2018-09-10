@@ -27,6 +27,23 @@
 #include "util/signal.h"
 
 bool check_drm_features(struct wlr_drm_backend *drm) {
+	if (drm->parent) {
+		uint64_t cap;
+		if (drmGetCap(drm->fd, DRM_CAP_PRIME, &cap) ||
+				!(cap & DRM_PRIME_CAP_IMPORT)) {
+			wlr_log(WLR_ERROR,
+				"PRIME import not supported on secondary GPU");
+			return false;
+		}
+
+		if (drmGetCap(drm->parent->fd, DRM_CAP_PRIME, &cap) ||
+				!(cap & DRM_PRIME_CAP_EXPORT)) {
+			wlr_log(WLR_ERROR,
+				"PRIME export not supported on primary GPU");
+			return false;
+		}
+	}
+
 	if (drmSetClientCap(drm->fd, DRM_CLIENT_CAP_UNIVERSAL_PLANES, 1)) {
 		wlr_log(WLR_ERROR, "DRM universal planes unsupported");
 		return false;
@@ -228,19 +245,12 @@ static bool drm_connector_swap_buffers(struct wlr_output *output,
 	return true;
 }
 
-static void drm_connector_set_gamma(struct wlr_output *output,
-		uint32_t size, uint16_t *r, uint16_t *g, uint16_t *b) {
-	struct wlr_drm_connector *conn = (struct wlr_drm_connector *)output;
-	struct wlr_drm_backend *drm = (struct wlr_drm_backend *)output->backend;
-	bool ok;
-
-	if (conn->crtc) {
-		ok = drm->iface->crtc_set_gamma(drm, conn->crtc, r, g, b, size);
-		if (ok) {
-			wlr_output_update_needs_swap(output);
-		}
+static void fill_empty_gamma_table(uint32_t size,
+		uint16_t *r, uint16_t *g, uint16_t *b) {
+	for (uint32_t i = 0; i < size; ++i) {
+		uint16_t val = (uint32_t)0xffff * i / (size - 1);
+		r[i] = g[i] = b[i] = val;
 	}
-
 }
 
 static uint32_t drm_connector_get_gamma_size(struct wlr_output *output) {
@@ -252,6 +262,37 @@ static uint32_t drm_connector_get_gamma_size(struct wlr_output *output) {
 	}
 
 	return 0;
+}
+
+static bool drm_connector_set_gamma(struct wlr_output *output,
+		uint32_t size, uint16_t *r, uint16_t *g, uint16_t *b) {
+	struct wlr_drm_connector *conn = (struct wlr_drm_connector *)output;
+	struct wlr_drm_backend *drm = (struct wlr_drm_backend *)output->backend;
+
+	if (!conn->crtc) {
+		return false;
+	}
+
+	uint16_t *reset_table = NULL;
+	if (size == 0) {
+		size = drm_connector_get_gamma_size(output);
+		reset_table = malloc(3 * size * sizeof(uint16_t));
+		if (reset_table == NULL) {
+			wlr_log(WLR_ERROR, "Failed to allocate gamma table");
+			return false;
+		}
+		r = reset_table;
+		g = reset_table + size;
+		b = reset_table + 2 * size;
+		fill_empty_gamma_table(size, r, g, b);
+	}
+
+	bool ok = drm->iface->crtc_set_gamma(drm, conn->crtc, r, g, b, size);
+	if (ok) {
+		wlr_output_update_needs_swap(output);
+	}
+	free(reset_table);
+	return ok;
 }
 
 static bool drm_connector_export_dmabuf(struct wlr_output *output,
@@ -604,7 +645,6 @@ static bool drm_connector_set_cursor(struct wlr_output *output,
 		bool update_texture) {
 	struct wlr_drm_connector *conn = (struct wlr_drm_connector *)output;
 	struct wlr_drm_backend *drm = (struct wlr_drm_backend *)output->backend;
-	struct wlr_drm_renderer *renderer = &drm->renderer;
 
 	struct wlr_drm_crtc *crtc = conn->crtc;
 	if (!crtc) {
@@ -630,13 +670,16 @@ static bool drm_connector_set_cursor(struct wlr_output *output,
 		ret = drmGetCap(drm->fd, DRM_CAP_CURSOR_HEIGHT, &h);
 		h = ret ? 64 : h;
 
+		struct wlr_drm_renderer *renderer =
+			drm->parent ? &drm->parent->renderer : &drm->renderer;
+
 		if (!init_drm_surface(&plane->surf, renderer, w, h,
 				GBM_FORMAT_ARGB8888, 0)) {
 			wlr_log(WLR_ERROR, "Cannot allocate cursor resources");
 			return false;
 		}
 
-		plane->cursor_bo = gbm_bo_create(renderer->gbm, w, h,
+		plane->cursor_bo = gbm_bo_create(drm->renderer.gbm, w, h,
 			GBM_FORMAT_ARGB8888, GBM_BO_USE_CURSOR | GBM_BO_USE_WRITE);
 		if (!plane->cursor_bo) {
 			wlr_log_errno(WLR_ERROR, "Failed to create cursor bo");

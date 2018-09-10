@@ -1,3 +1,11 @@
+/*
+ * This an unstable interface of wlroots. No guarantees are made regarding the
+ * future consistency of this API.
+ */
+#ifndef WLR_USE_UNSTABLE
+#error "Add -DWLR_USE_UNSTABLE to enable unstable wlroots features"
+#endif
+
 #ifndef WLR_BACKEND_DRM_H
 #define WLR_BACKEND_DRM_H
 
@@ -19,6 +27,12 @@ struct wlr_backend *wlr_drm_backend_create(struct wl_display *display,
 
 bool wlr_backend_is_drm(struct wlr_backend *backend);
 bool wlr_output_is_drm(struct wlr_output *output);
+
+/**
+ * Add mode to the list of available modes
+ */
+typedef struct _drmModeModeInfo drmModeModeInfo;
+bool wlr_drm_connector_add_mode(struct wlr_output *output, const drmModeModeInfo *mode);
 
 struct wlr_session *wlr_drm_backend_get_session(struct wlr_backend *backend);
 

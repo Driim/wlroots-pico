@@ -1,3 +1,11 @@
+/*
+ * This an unstable interface of wlroots. No guarantees are made regarding the
+ * future consistency of this API.
+ */
+#ifndef WLR_USE_UNSTABLE
+#error "Add -DWLR_USE_UNSTABLE to enable unstable wlroots features"
+#endif
+
 #ifndef WLR_TYPES_WLR_LAYER_SHELL_H
 #define WLR_TYPES_WLR_LAYER_SHELL_H
 #include <stdbool.h>
@@ -31,6 +39,7 @@ struct wlr_layer_shell {
 		 // Note: the output may be NULL. In this case, it is your
 		 // responsibility to assign an output before returning.
 		struct wl_signal new_surface;
+		struct wl_signal destroy;
 	} events;
 
 	void *data;

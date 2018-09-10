@@ -79,6 +79,7 @@ struct wlr_session *wlr_session_create(struct wl_display *disp) {
 
 	session->active = true;
 	wl_signal_init(&session->session_signal);
+	wl_signal_init(&session->events.destroy);
 	wl_list_init(&session->devices);
 
 	session->udev = udev_new();
@@ -125,6 +126,7 @@ void wlr_session_destroy(struct wlr_session *session) {
 		return;
 	}
 
+	wlr_signal_emit_safe(&session->events.destroy, session);
 	wl_list_remove(&session->display_destroy.link);
 
 	wl_event_source_remove(session->udev_event);
@@ -220,17 +222,9 @@ static int open_if_kms(struct wlr_session *restrict session, const char *restric
 		goto out_fd;
 	}
 
-	if (res->count_crtcs <= 0 || res->count_connectors <= 0 ||
-		res->count_encoders <= 0) {
-
-		goto out_res;
-	}
-
 	drmModeFreeResources(res);
 	return fd;
 
-out_res:
-	drmModeFreeResources(res);
 out_fd:
 	wlr_session_close_file(session, fd);
 	return -1;

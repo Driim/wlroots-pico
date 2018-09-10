@@ -654,9 +654,27 @@ static void xwayland_surface_role_commit(struct wlr_surface *wlr_surface) {
 	}
 }
 
+static void xwayland_surface_role_precommit(struct wlr_surface *wlr_surface) {
+	assert(wlr_surface->role == &xwayland_surface_role);
+	struct wlr_xwayland_surface *surface = wlr_surface->role_data;
+	if (surface == NULL) {
+		return;
+	}
+
+	if (wlr_surface->pending.committed & WLR_SURFACE_STATE_BUFFER &&
+			wlr_surface->pending.buffer_resource == NULL) {
+		// This is a NULL commit
+		if (surface->mapped) {
+			wlr_signal_emit_safe(&surface->events.unmap, surface);
+			surface->mapped = false;
+		}
+	}
+}
+
 static const struct wlr_surface_role xwayland_surface_role = {
 	.name = "wlr_xwayland_surface",
 	.commit = xwayland_surface_role_commit,
+	.precommit = xwayland_surface_role_precommit,
 };
 
 static void handle_surface_destroy(struct wl_listener *listener, void *data) {
@@ -1684,4 +1702,28 @@ void wlr_xwayland_surface_ping(struct wlr_xwayland_surface *surface) {
 	wl_event_source_timer_update(surface->ping_timer,
 		surface->xwm->ping_timeout);
 	surface->pinging = true;
+}
+
+bool wlr_xwayland_or_surface_wants_focus(
+		const struct wlr_xwayland_surface *surface) {
+	bool ret = true;
+	static enum atom_name needles[] = {
+		NET_WM_WINDOW_TYPE_COMBO,
+		NET_WM_WINDOW_TYPE_DND,
+		NET_WM_WINDOW_TYPE_DROPDOWN_MENU,
+		NET_WM_WINDOW_TYPE_MENU,
+		NET_WM_WINDOW_TYPE_NOTIFICATION,
+		NET_WM_WINDOW_TYPE_POPUP_MENU,
+		NET_WM_WINDOW_TYPE_SPLASH,
+		NET_WM_WINDOW_TYPE_TOOLTIP,
+		NET_WM_WINDOW_TYPE_UTILITY,
+	};
+	for (size_t i = 0; i < sizeof(needles) / sizeof(needles[0]); ++i) {
+		if (xwm_atoms_contains(surface->xwm, surface->window_type,
+				surface->window_type_len, needles[i])) {
+			ret = false;
+		}
+	}
+
+	return ret;
 }

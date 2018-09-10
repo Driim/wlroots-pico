@@ -1,3 +1,11 @@
+/*
+ * This an unstable interface of wlroots. No guarantees are made regarding the
+ * future consistency of this API.
+ */
+#ifndef WLR_USE_UNSTABLE
+#error "Add -DWLR_USE_UNSTABLE to enable unstable wlroots features"
+#endif
+
 #ifndef WLR_TYPES_WLR_SURFACE_H
 #define WLR_TYPES_WLR_SURFACE_H
 
@@ -39,6 +47,7 @@ struct wlr_surface_state {
 struct wlr_surface_role {
 	const char *name;
 	void (*commit)(struct wlr_surface *surface);
+	void (*precommit)(struct wlr_surface *surface);
 };
 
 struct wlr_surface {

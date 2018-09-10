@@ -449,6 +449,7 @@ struct wlr_layer_shell *wlr_layer_shell_create(struct wl_display *display) {
 	layer_shell->global = global;
 
 	wl_signal_init(&layer_shell->events.new_surface);
+	wl_signal_init(&layer_shell->events.destroy);
 
 	layer_shell->display_destroy.notify = handle_display_destroy;
 	wl_display_add_destroy_listener(display, &layer_shell->display_destroy);
@@ -464,6 +465,7 @@ void wlr_layer_shell_destroy(struct wlr_layer_shell *layer_shell) {
 	wl_resource_for_each_safe(client, tmp, &layer_shell->client_resources) {
 		wl_resource_destroy(client);
 	}
+	wlr_signal_emit_safe(&layer_shell->events.destroy, layer_shell);
 	wl_list_remove(&layer_shell->display_destroy.link);
 	wl_global_destroy(layer_shell->global);
 	free(layer_shell);

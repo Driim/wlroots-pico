@@ -25,7 +25,7 @@ static void gamma_control_destroy(struct wlr_gamma_control *gamma_control) {
 
 static const struct gamma_control_interface gamma_control_impl;
 
-struct wlr_gamma_control *gamma_control_from_resource(
+static struct wlr_gamma_control *gamma_control_from_resource(
 		struct wl_resource *resource) {
 	assert(wl_resource_instance_of(resource, &gamma_control_interface,
 		&gamma_control_impl));
@@ -83,7 +83,7 @@ static const struct gamma_control_interface gamma_control_impl = {
 
 static const struct gamma_control_manager_interface gamma_control_manager_impl;
 
-struct wlr_gamma_control_manager *gamma_control_manager_from_resource(
+static struct wlr_gamma_control_manager *gamma_control_manager_from_resource(
 		struct wl_resource *resource) {
 	assert(wl_resource_instance_of(resource, &gamma_control_manager_interface,
 		&gamma_control_manager_impl));
@@ -155,11 +155,12 @@ void wlr_gamma_control_manager_destroy(
 	if (!manager) {
 		return;
 	}
-	wl_list_remove(&manager->display_destroy.link);
 	struct wlr_gamma_control *gamma_control, *tmp;
 	wl_list_for_each_safe(gamma_control, tmp, &manager->controls, link) {
 		gamma_control_destroy(gamma_control);
 	}
+	wlr_signal_emit_safe(&manager->events.destroy, manager);
+	wl_list_remove(&manager->display_destroy.link);
 	wl_global_destroy(manager->global);
 	free(manager);
 }
@@ -186,6 +187,7 @@ struct wlr_gamma_control_manager *wlr_gamma_control_manager_create(
 	}
 	manager->global = global;
 
+	wl_signal_init(&manager->events.destroy);
 	wl_list_init(&manager->controls);
 
 	manager->display_destroy.notify = handle_display_destroy;

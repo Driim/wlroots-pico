@@ -200,7 +200,7 @@ void handle_xdg_surface_toplevel_committed(struct wlr_xdg_surface *surface) {
 
 static const struct xdg_toplevel_interface xdg_toplevel_implementation;
 
-static struct wlr_xdg_surface *xdg_surface_from_xdg_toplevel_resource(
+struct wlr_xdg_surface *wlr_xdg_surface_from_toplevel_resource(
 		struct wl_resource *resource) {
 	assert(wl_resource_instance_of(resource, &xdg_toplevel_interface,
 		&xdg_toplevel_implementation));
@@ -210,11 +210,11 @@ static struct wlr_xdg_surface *xdg_surface_from_xdg_toplevel_resource(
 static void xdg_toplevel_handle_set_parent(struct wl_client *client,
 		struct wl_resource *resource, struct wl_resource *parent_resource) {
 	struct wlr_xdg_surface *surface =
-		xdg_surface_from_xdg_toplevel_resource(resource);
+		wlr_xdg_surface_from_toplevel_resource(resource);
 	struct wlr_xdg_surface *parent = NULL;
 
 	if (parent_resource != NULL) {
-		parent = xdg_surface_from_xdg_toplevel_resource(parent_resource);
+		parent = wlr_xdg_surface_from_toplevel_resource(parent_resource);
 	}
 
 	surface->toplevel->parent = parent;
@@ -224,7 +224,7 @@ static void xdg_toplevel_handle_set_parent(struct wl_client *client,
 static void xdg_toplevel_handle_set_title(struct wl_client *client,
 		struct wl_resource *resource, const char *title) {
 	struct wlr_xdg_surface *surface =
-		xdg_surface_from_xdg_toplevel_resource(resource);
+		wlr_xdg_surface_from_toplevel_resource(resource);
 	char *tmp;
 
 	tmp = strdup(title);
@@ -234,12 +234,13 @@ static void xdg_toplevel_handle_set_title(struct wl_client *client,
 
 	free(surface->toplevel->title);
 	surface->toplevel->title = tmp;
+	wlr_signal_emit_safe(&surface->toplevel->events.set_title, surface);
 }
 
 static void xdg_toplevel_handle_set_app_id(struct wl_client *client,
 		struct wl_resource *resource, const char *app_id) {
 	struct wlr_xdg_surface *surface =
-		xdg_surface_from_xdg_toplevel_resource(resource);
+		wlr_xdg_surface_from_toplevel_resource(resource);
 	char *tmp;
 
 	tmp = strdup(app_id);
@@ -249,13 +250,14 @@ static void xdg_toplevel_handle_set_app_id(struct wl_client *client,
 
 	free(surface->toplevel->app_id);
 	surface->toplevel->app_id = tmp;
+	wlr_signal_emit_safe(&surface->toplevel->events.set_app_id, surface);
 }
 
 static void xdg_toplevel_handle_show_window_menu(struct wl_client *client,
 		struct wl_resource *resource, struct wl_resource *seat_resource,
 		uint32_t serial, int32_t x, int32_t y) {
 	struct wlr_xdg_surface *surface =
-		xdg_surface_from_xdg_toplevel_resource(resource);
+		wlr_xdg_surface_from_toplevel_resource(resource);
 	struct wlr_seat_client *seat =
 		wlr_seat_client_from_resource(seat_resource);
 
@@ -286,7 +288,7 @@ static void xdg_toplevel_handle_move(struct wl_client *client,
 		struct wl_resource *resource, struct wl_resource *seat_resource,
 		uint32_t serial) {
 	struct wlr_xdg_surface *surface =
-		xdg_surface_from_xdg_toplevel_resource(resource);
+		wlr_xdg_surface_from_toplevel_resource(resource);
 	struct wlr_seat_client *seat =
 		wlr_seat_client_from_resource(seat_resource);
 
@@ -315,7 +317,7 @@ static void xdg_toplevel_handle_resize(struct wl_client *client,
 		struct wl_resource *resource, struct wl_resource *seat_resource,
 		uint32_t serial, uint32_t edges) {
 	struct wlr_xdg_surface *surface =
-		xdg_surface_from_xdg_toplevel_resource(resource);
+		wlr_xdg_surface_from_toplevel_resource(resource);
 	struct wlr_seat_client *seat =
 		wlr_seat_client_from_resource(seat_resource);
 
@@ -344,7 +346,7 @@ static void xdg_toplevel_handle_resize(struct wl_client *client,
 static void xdg_toplevel_handle_set_max_size(struct wl_client *client,
 		struct wl_resource *resource, int32_t width, int32_t height) {
 	struct wlr_xdg_surface *surface =
-		xdg_surface_from_xdg_toplevel_resource(resource);
+		wlr_xdg_surface_from_toplevel_resource(resource);
 	surface->toplevel->client_pending.max_width = width;
 	surface->toplevel->client_pending.max_height = height;
 }
@@ -352,7 +354,7 @@ static void xdg_toplevel_handle_set_max_size(struct wl_client *client,
 static void xdg_toplevel_handle_set_min_size(struct wl_client *client,
 		struct wl_resource *resource, int32_t width, int32_t height) {
 	struct wlr_xdg_surface *surface =
-		xdg_surface_from_xdg_toplevel_resource(resource);
+		wlr_xdg_surface_from_toplevel_resource(resource);
 	surface->toplevel->client_pending.min_width = width;
 	surface->toplevel->client_pending.min_height = height;
 }
@@ -360,7 +362,7 @@ static void xdg_toplevel_handle_set_min_size(struct wl_client *client,
 static void xdg_toplevel_handle_set_maximized(struct wl_client *client,
 		struct wl_resource *resource) {
 	struct wlr_xdg_surface *surface =
-		xdg_surface_from_xdg_toplevel_resource(resource);
+		wlr_xdg_surface_from_toplevel_resource(resource);
 	surface->toplevel->client_pending.maximized = true;
 	wlr_signal_emit_safe(&surface->toplevel->events.request_maximize, surface);
 }
@@ -368,7 +370,7 @@ static void xdg_toplevel_handle_set_maximized(struct wl_client *client,
 static void xdg_toplevel_handle_unset_maximized(struct wl_client *client,
 		struct wl_resource *resource) {
 	struct wlr_xdg_surface *surface =
-		xdg_surface_from_xdg_toplevel_resource(resource);
+		wlr_xdg_surface_from_toplevel_resource(resource);
 	surface->toplevel->client_pending.maximized = false;
 	wlr_signal_emit_safe(&surface->toplevel->events.request_maximize, surface);
 }
@@ -376,7 +378,7 @@ static void xdg_toplevel_handle_unset_maximized(struct wl_client *client,
 static void xdg_toplevel_handle_set_fullscreen(struct wl_client *client,
 		struct wl_resource *resource, struct wl_resource *output_resource) {
 	struct wlr_xdg_surface *surface =
-		xdg_surface_from_xdg_toplevel_resource(resource);
+		wlr_xdg_surface_from_toplevel_resource(resource);
 
 	struct wlr_output *output = NULL;
 	if (output_resource != NULL) {
@@ -397,7 +399,7 @@ static void xdg_toplevel_handle_set_fullscreen(struct wl_client *client,
 static void xdg_toplevel_handle_unset_fullscreen(struct wl_client *client,
 		struct wl_resource *resource) {
 	struct wlr_xdg_surface *surface =
-		xdg_surface_from_xdg_toplevel_resource(resource);
+		wlr_xdg_surface_from_toplevel_resource(resource);
 
 	surface->toplevel->client_pending.fullscreen = false;
 
@@ -413,7 +415,7 @@ static void xdg_toplevel_handle_unset_fullscreen(struct wl_client *client,
 static void xdg_toplevel_handle_set_minimized(struct wl_client *client,
 		struct wl_resource *resource) {
 	struct wlr_xdg_surface *surface =
-		xdg_surface_from_xdg_toplevel_resource(resource);
+		wlr_xdg_surface_from_toplevel_resource(resource);
 	wlr_signal_emit_safe(&surface->toplevel->events.request_minimize, surface);
 }
 
@@ -441,7 +443,7 @@ static const struct xdg_toplevel_interface xdg_toplevel_implementation = {
 
 static void xdg_toplevel_handle_resource_destroy(struct wl_resource *resource) {
 	struct wlr_xdg_surface *surface =
-		xdg_surface_from_xdg_toplevel_resource(resource);
+		wlr_xdg_surface_from_toplevel_resource(resource);
 	if (surface != NULL) {
 		destroy_xdg_toplevel(surface);
 	}
@@ -449,7 +451,8 @@ static void xdg_toplevel_handle_resource_destroy(struct wl_resource *resource) {
 
 const struct wlr_surface_role xdg_toplevel_surface_role = {
 	.name = "xdg_toplevel",
-	.commit = handle_xdg_surface_committed,
+	.commit = handle_xdg_surface_commit,
+	.precommit = handle_xdg_surface_precommit,
 };
 
 void create_xdg_toplevel(struct wlr_xdg_surface *xdg_surface,
@@ -471,6 +474,8 @@ void create_xdg_toplevel(struct wlr_xdg_surface *xdg_surface,
 	wl_signal_init(&xdg_surface->toplevel->events.request_resize);
 	wl_signal_init(&xdg_surface->toplevel->events.request_show_window_menu);
 	wl_signal_init(&xdg_surface->toplevel->events.set_parent);
+	wl_signal_init(&xdg_surface->toplevel->events.set_title);
+	wl_signal_init(&xdg_surface->toplevel->events.set_app_id);
 
 	xdg_surface->role = WLR_XDG_SURFACE_ROLE_TOPLEVEL;
 	xdg_surface->toplevel->base = xdg_surface;

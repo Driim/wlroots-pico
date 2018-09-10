@@ -144,13 +144,14 @@ void wlr_idle_inhibit_v1_destroy(struct wlr_idle_inhibit_manager_v1 *idle_inhibi
 		return;
 	}
 
-	wl_list_remove(&idle_inhibit->display_destroy.link);
-
 	struct wlr_idle_inhibitor_v1 *inhibitor;
 	struct wlr_idle_inhibitor_v1 *tmp;
 	wl_list_for_each_safe(inhibitor, tmp, &idle_inhibit->inhibitors, link) {
 		idle_inhibitor_v1_destroy(inhibitor);
 	}
+
+	wlr_signal_emit_safe(&idle_inhibit->events.destroy, idle_inhibit);
+	wl_list_remove(&idle_inhibit->display_destroy.link);
 
 	struct wl_resource *resource;
 	struct wl_resource *tmp_resource;
@@ -175,6 +176,7 @@ struct wlr_idle_inhibit_manager_v1 *wlr_idle_inhibit_v1_create(struct wl_display
 	idle_inhibit->display_destroy.notify = handle_display_destroy;
 	wl_display_add_destroy_listener(display, &idle_inhibit->display_destroy);
 	wl_signal_init(&idle_inhibit->events.new_inhibitor);
+	wl_signal_init(&idle_inhibit->events.destroy);
 
 	idle_inhibit->global = wl_global_create(display,
 		&zwp_idle_inhibit_manager_v1_interface, 1,

@@ -408,6 +408,8 @@ struct wlr_primary_selection_device_manager *
 		return NULL;
 	}
 
+	wl_signal_init(&manager->events.destroy);
+
 	manager->display_destroy.notify = handle_display_destroy;
 	wl_display_add_destroy_listener(display, &manager->display_destroy);
 
@@ -419,6 +421,7 @@ void wlr_primary_selection_device_manager_destroy(
 	if (manager == NULL) {
 		return;
 	}
+	wlr_signal_emit_safe(&manager->events.destroy, manager);
 	wl_list_remove(&manager->display_destroy.link);
 	// TODO: free resources
 	wl_global_destroy(manager->global);

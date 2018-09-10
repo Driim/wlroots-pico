@@ -1,3 +1,11 @@
+/*
+ * This an unstable interface of wlroots. No guarantees are made regarding the
+ * future consistency of this API.
+ */
+#ifndef WLR_USE_UNSTABLE
+#error "Add -DWLR_USE_UNSTABLE to enable unstable wlroots features"
+#endif
+
 #ifndef WLR_TYPES_WLR_XDG_SHELL_V6_H
 #define WLR_TYPES_WLR_XDG_SHELL_V6_H
 
@@ -22,6 +30,7 @@ struct wlr_xdg_shell_v6 {
 		 * surface will be ready to be managed on the `map` event.
 		 */
 		struct wl_signal new_surface;
+		struct wl_signal destroy;
 	} events;
 
 	void *data;
@@ -127,6 +136,8 @@ struct wlr_xdg_toplevel_v6 {
 		struct wl_signal request_resize;
 		struct wl_signal request_show_window_menu;
 		struct wl_signal set_parent;
+		struct wl_signal set_title;
+		struct wl_signal set_app_id;
 	} events;
 };
 

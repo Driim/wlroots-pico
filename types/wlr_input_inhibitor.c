@@ -112,6 +112,7 @@ void wlr_input_inhibit_manager_destroy(
 		input_inhibitor_destroy(manager->active_client,
 				manager->active_inhibitor);
 	}
+	wlr_signal_emit_safe(&manager->events.destroy, manager);
 	wl_list_remove(&manager->display_destroy.link);
 	wl_global_destroy(manager->global);
 	free(manager);
@@ -143,6 +144,7 @@ struct wlr_input_inhibit_manager *wlr_input_inhibit_manager_create(
 
 	wl_signal_init(&manager->events.activate);
 	wl_signal_init(&manager->events.deactivate);
+	wl_signal_init(&manager->events.destroy);
 
 	manager->display_destroy.notify = handle_display_destroy;
 	wl_display_add_destroy_listener(display, &manager->display_destroy);
