@@ -31,3 +31,5 @@ Updating the Debian packaging
 
 Merge *librem5* into the *debian/sid* branch. Use the script called `debian/update-git-snapshot` (`git-buildpackage` required, available in Debian).
 
+Follow the [instructions on updating changelogs](https://www.debian.org/doc/debian-policy/ch-source.html#debian-changelog-debian-changelog). Use the newly created tag name as the *version*, and `experimental` as the *distribution*. Compose the changelog entry contents according to the [best practices](https://www.debian.org/doc/manuals/developers-reference/ch06.en.html#bpp-debian-changelog). Go to the root of the repository and use `dch edit` to do that.
+
