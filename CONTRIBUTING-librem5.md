@@ -24,7 +24,7 @@ Test your feature. Once happy with it, try to merge it upstream and follow *upda
 Updating a feature
 ------------------
 
-(Basically subsystem trees in Linux). Merge *librem5* into your *f/* branch when needed. Update you feature, do another merge request against *librem5* when done.
+(Basically subsystem trees in Linux). Merge *master* into your *f/* branch when needed. Update your feature, do another merge request against *librem5* when done.
 
 Updating the Debian packaging
 -----------------------------
